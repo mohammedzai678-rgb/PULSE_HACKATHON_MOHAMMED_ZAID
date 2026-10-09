@@ -112,8 +112,8 @@ export function extractDates(text: string, messageTimestamp?: Date, messageId: s
     if (month !== undefined && day >= 1 && day <= 31) {
       let d = new Date(year, month, day);
       // Context snippet around match
-      const start = Math.max(0, match.index - 30);
-      const end = Math.min(text.length, match.index + rawPhrase.length + 30);
+      const start = Math.max(0, match.index - 100);
+      const end = Math.min(text.length, match.index + rawPhrase.length + 100);
       const context = text.slice(start, end);
       const timeInfo = extractTimeFromText(context);
 
@@ -140,8 +140,8 @@ export function extractDates(text: string, messageTimestamp?: Date, messageId: s
     const month = parseInt(match[2], 10) - 1;
     const day = parseInt(match[3], 10);
 
-    const start = Math.max(0, match.index - 30);
-    const end = Math.min(text.length, match.index + rawPhrase.length + 30);
+    const start = Math.max(0, match.index - 100);
+    const end = Math.min(text.length, match.index + rawPhrase.length + 100);
     const context = text.slice(start, end);
     const timeInfo = extractTimeFromText(context);
 
@@ -175,8 +175,8 @@ export function extractDates(text: string, messageTimestamp?: Date, messageId: s
       basis = 'ambiguous';
     }
 
-    const start = Math.max(0, match.index - 30);
-    const end = Math.min(text.length, match.index + rawPhrase.length + 30);
+    const start = Math.max(0, match.index - 100);
+    const end = Math.min(text.length, match.index + rawPhrase.length + 100);
     const context = text.slice(start, end);
     const timeInfo = extractTimeFromText(context);
 
@@ -198,8 +198,8 @@ export function extractDates(text: string, messageTimestamp?: Date, messageId: s
     else if (lower === 'day after tomorrow') offset = 2;
     else if (lower === 'yesterday') offset = -1;
 
-    const start = Math.max(0, match.index - 30);
-    const end = Math.min(text.length, match.index + rawPhrase.length + 30);
+    const start = Math.max(0, match.index - 100);
+    const end = Math.min(text.length, match.index + rawPhrase.length + 100);
     const context = text.slice(start, end);
     const timeInfo = extractTimeFromText(context);
 

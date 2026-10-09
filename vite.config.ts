@@ -3,6 +3,10 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   plugins: [
@@ -41,5 +45,29 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('framer-motion') || id.includes('lucide-react')) {
+              return 'vendor-ui';
+            }
+            if (id.includes('jspdf') || id.includes('html2canvas')) {
+              return 'vendor-pdf';
+            }
+            if (id.includes('tesseract')) {
+              return 'vendor-ocr';
+            }
+            return 'vendor-core';
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
   },
 });

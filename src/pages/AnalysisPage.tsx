@@ -97,6 +97,7 @@ export default function AnalysisPage() {
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewOcrModal, setViewOcrModal] = useState<{ label: string; text: string } | null>(null);
+  const [showCatchUpModal, setShowCatchUpModal] = useState(false);
 
   const messages = getAllMessages();
   const hasData = messages.length > 0;
@@ -885,6 +886,17 @@ export default function AnalysisPage() {
                   </div>
 
                   <div className="flex items-center gap-1.5 flex-wrap">
+                    <Button
+                      size="sm"
+                      onClick={() => setShowCatchUpModal(true)}
+                      icon={<Sparkles className="w-3.5 h-3.5" />}
+                      className={cn(
+                        "font-semibold shadow-xs",
+                        isDark ? "bg-dark-accent text-dark-bg hover:opacity-90" : "bg-light-accent text-white hover:opacity-90"
+                      )}
+                    >
+                      30s Catch-Up
+                    </Button>
                     <Button variant="outline" size="sm" onClick={exportPdf} icon={<Download className="w-3.5 h-3.5" />}>
                       PDF
                     </Button>
@@ -1183,6 +1195,133 @@ export default function AnalysisPage() {
 
               <div className="flex justify-end pt-2">
                 <Button size="sm" onClick={() => setViewOcrModal(null)}>
+                  Close
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 30s CATCH-UP EXECUTIVE BRIEFING MODAL */}
+      <AnimatePresence>
+        {showCatchUpModal && report && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className={cn(
+                "w-full max-w-3xl p-6 rounded-2xl border shadow-2xl space-y-5 max-h-[85vh] flex flex-col",
+                isDark ? "bg-dark-panel border-dark-border" : "bg-light-card border-light-border"
+              )}
+            >
+              <div className="flex items-center justify-between border-b border-border/50 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-accent/20 text-accent flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-current">What Did I Miss? — 30-Second Catch-Up</h3>
+                    <p className="text-xs text-secondary">Instant executive briefing across {report.totalMessagesProcessed} unread items</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCatchUpModal(false)}
+                  className="p-1.5 text-secondary hover:text-current rounded-lg cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {/* Quadrant 1: Critical & Emergency Alerts */}
+                <div className="p-4 rounded-xl border bg-red-500/5 border-red-500/30 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4" /> Critical Life-Safety & Urgent Alerts ({report.findings.filter(f => f.severity === 'S4' || f.severity === 'S3').length})
+                  </h4>
+                  {report.findings.filter(f => f.severity === 'S4' || f.severity === 'S3').length > 0 ? (
+                    <div className="space-y-2">
+                      {report.findings.filter(f => f.severity === 'S4' || f.severity === 'S3').map(f => (
+                        <div key={f.id} className="text-xs flex items-start gap-2 bg-black/10 dark:bg-white/5 p-2 rounded-lg">
+                          <SeverityBadge severity={f.severity} size="sm" />
+                          <div className="flex-1">
+                            <span className="font-semibold text-current">{f.title}: </span>
+                            <span className="text-secondary">{f.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-secondary">No immediate critical emergencies detected.</p>
+                  )}
+                </div>
+
+                {/* Quadrant 2: Action Items & Deadlines */}
+                <div className="p-4 rounded-xl border bg-amber-500/5 border-amber-500/30 space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" /> Key Deadlines & Tasks ({report.actionItems.length})
+                  </h4>
+                  {report.actionItems.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {report.actionItems.slice(0, 5).map(a => (
+                        <div key={a.id} className="text-xs flex items-start gap-2">
+                          <span className="text-accent mt-0.5">•</span>
+                          <span className="text-current font-medium flex-1">{a.taskDescription}</span>
+                          {a.deadline && <span className="text-[11px] text-red-400 shrink-0">Due: {formatDate(a.deadline)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-secondary">No pending deadlines recorded.</p>
+                  )}
+                </div>
+
+                {/* Quadrant 3 & 4 Grid: Decisions and Questions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Decisions Made */}
+                  <div className="p-4 rounded-xl border bg-emerald-500/5 border-emerald-500/30 space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4" /> Decisions Finalized ({report.decisions.length})
+                    </h4>
+                    {report.decisions.length > 0 ? (
+                      <ul className="text-xs space-y-1 text-secondary">
+                        {report.decisions.map((d, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <span className="text-emerald-400 font-bold">✓</span>
+                            <span>{d}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-secondary">No formal agreements logged.</p>
+                    )}
+                  </div>
+
+                  {/* Unresolved Questions */}
+                  <div className="p-4 rounded-xl border bg-sky-500/5 border-sky-500/30 space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                      <HelpCircle className="w-4 h-4" /> Unanswered Questions ({report.unresolvedQuestions.length})
+                    </h4>
+                    {report.unresolvedQuestions.length > 0 ? (
+                      <ul className="text-xs space-y-1 text-secondary">
+                        {report.unresolvedQuestions.map((q, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <span className="text-sky-400 font-bold">?</span>
+                            <span>{q}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-secondary">All questions answered.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-border/50">
+                <Button size="sm" onClick={() => setShowCatchUpModal(false)}>
                   Close
                 </Button>
               </div>
