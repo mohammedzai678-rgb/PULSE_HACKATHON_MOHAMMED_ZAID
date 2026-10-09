@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useImportStore, useAnalysisStore, useToastStore, useThemeStore, buildReport } from '@/lib/store';
+import { useImportStore, useAnalysisStore, useToastStore, useThemeStore, useSettingsStore, buildReport } from '@/lib/store';
 import { Button, Card, SeverityBadge, DropZone } from '@/components/ui';
 import {
   Brain,
@@ -39,7 +39,7 @@ import {
   HeartHandshake,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { analyzeMessages } from '@/lib/analysis/engine';
+import { analyzeMessagesAsync } from '@/lib/analysis/worker-client';
 import { parseFile, performOCR, parseWhatsAppChat } from '@/lib/parsers';
 import { exportReportToPdf, exportReportToMarkdown, exportReportToJson, downloadFile } from '@/lib/export';
 import { formatDateTime, formatDate, generateId, cn } from '@/lib/utils';
@@ -121,11 +121,15 @@ export default function AnalysisPage() {
         setProgress(p);
       };
 
-      const result = await analyzeMessages(currentMessages, onProgress);
+      const { settings } = useSettingsStore.getState();
+      const result = await analyzeMessagesAsync(currentMessages, onProgress, {
+        redactSensitive: settings.redactSensitiveContent,
+        userNames: settings.userNames,
+      });
       const newReport = buildReport(result, {
         title: `Intelligence Report — ${formatDate(new Date())}`,
-        includeExcerpts: true,
-        userNames: [],
+        includeExcerpts: settings.includeExcerptsInReports,
+        userNames: settings.userNames,
       });
 
       setReport(newReport);

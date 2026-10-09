@@ -49,7 +49,7 @@ export function categorizeMessage(
   }
 
   // 4. Safety & Hazard Emergency
-  if (/\b(?:fire\s+(?:alarm|breakout|broke\s+out)|building\s+on\s+fire|gas\s+leak|chemical\s+spill|explosion|evacuate|lockdown|active\s+threat|cyclone|flash\s+flood|earthquake)\b/i.test(lower)) {
+  if (/\b(?:fire\s+(?:alarm|breakout|broke\s+out|hazard)|building\s+on\s+fire|gas\s+leak|chemical\s+(?:spill|leak|hazard)|toxic\s+(?:leak|spill|fumes)|explosion|evacuat(?:e|ion)|immediate\s+evacuation|lockdown|active\s+threat|cyclone|flash\s+flood|earthquake)\b/i.test(lower)) {
     if (!/\b(?:drill|simulation)\b/i.test(lower)) {
       return 'safety';
     }

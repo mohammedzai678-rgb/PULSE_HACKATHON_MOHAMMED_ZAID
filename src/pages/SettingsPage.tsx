@@ -1,9 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSettingsStore, useToastStore, useThemeStore } from '@/lib/store';
 import { Card, PageHeader, Button } from '@/components/ui';
-import { Settings, Shield, Moon, Sun, Save, ShieldCheck, Wifi, WifiOff, HardDrive, Cpu, Mail, User } from 'lucide-react';
+import {
+  Settings,
+  Shield,
+  Moon,
+  Sun,
+  Save,
+  ShieldCheck,
+  Wifi,
+  WifiOff,
+  HardDrive,
+  Cpu,
+  Mail,
+  User,
+  Download,
+  Upload,
+  Trash2,
+  Database,
+  Layers,
+  RefreshCw,
+} from 'lucide-react';
 import type { AppSettings } from '@/types';
 import { cn } from '@/lib/utils';
+import {
+  getStorageUsageEstimate,
+  exportDatabaseBackup,
+  importDatabaseBackup,
+  deleteAllReports,
+  getReportCount,
+} from '@/lib/db';
+import { downloadFile } from '@/lib/export';
 
 export default function SettingsPage() {
   const { settings, updateSettings, isOnline, ocrReady } = useSettingsStore();
@@ -12,6 +39,30 @@ export default function SettingsPage() {
 
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
   const [userNamesInput, setUserNamesInput] = useState((settings.userNames || []).join(', '));
+  const [storageStats, setStorageStats] = useState<{ usageMB: number; quotaMB: number; percentage: number }>({
+    usageMB: 0,
+    quotaMB: 0,
+    percentage: 0,
+  });
+  const [reportCount, setReportCount] = useState<number>(0);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadStorageInfo = async () => {
+    try {
+      const stats = await getStorageUsageEstimate();
+      setStorageStats(stats);
+      const count = await getReportCount();
+      setReportCount(count);
+    } catch {
+      // fallback
+    }
+  };
+
+  useEffect(() => {
+    loadStorageInfo();
+  }, []);
 
   useEffect(() => {
     setLocalSettings(settings);
@@ -29,6 +80,49 @@ export default function SettingsPage() {
       userNames: parsedNames,
     });
     addToast('Settings saved successfully', 'success');
+  };
+
+  const handleExportBackup = async () => {
+    setIsExporting(true);
+    try {
+      const jsonBackup = await exportDatabaseBackup();
+      const filename = `wdim-backup-${new Date().toISOString().split('T')[0]}.json`;
+      downloadFile(jsonBackup, filename, 'application/json');
+      addToast('Backup exported successfully', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to export backup', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const res = await importDatabaseBackup(text);
+      await loadStorageInfo();
+      addToast(`Restored ${res.restoredReports} reports successfully!`, 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Invalid backup file structure', 'error');
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (window.confirm('Are you sure you want to delete all stored reports from your browser? This cannot be undone.')) {
+      try {
+        await deleteAllReports();
+        await loadStorageInfo();
+        addToast('All local reports cleared', 'info');
+      } catch {
+        addToast('Failed to clear database', 'error');
+      }
+    }
   };
 
   return (
@@ -144,6 +238,87 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
+
+          {/* Local Storage, Backup & Audit Card */}
+          <Card className="p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-border/50 pb-3">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Database className="w-5 h-5 text-accent" /> Local Storage & Data Management
+              </h2>
+              <button
+                onClick={loadStorageInfo}
+                title="Refresh Storage Status"
+                className="p-1.5 rounded-lg text-secondary hover:text-foreground hover:bg-white/5 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-border/60 bg-surface/30 space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-accent" /> IndexedDB Quota Usage
+                  </span>
+                  <span className="text-xs text-secondary font-mono">
+                    {storageStats.usageMB} MB {storageStats.quotaMB > 0 ? `/ ${storageStats.quotaMB} MB` : 'used'}
+                  </span>
+                </div>
+                <div className="w-full bg-secondary/20 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-accent h-full transition-all duration-300"
+                    style={{ width: `${Math.max(2, Math.min(100, storageStats.percentage || 2))}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-secondary">
+                  <span>{reportCount} Stored Intelligence Report(s)</span>
+                  <span>100% On-Device Sandbox</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <button
+                  onClick={handleExportBackup}
+                  disabled={isExporting}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border/80 hover:border-accent hover:bg-accent/5 text-sm font-medium transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-accent" />
+                  {isExporting ? 'Exporting...' : 'Export Backup (.json)'}
+                </button>
+
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".json"
+                    onChange={handleFileImport}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isImporting}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border/80 hover:border-accent hover:bg-accent/5 text-sm font-medium transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4 text-accent" />
+                    {isImporting ? 'Restoring...' : 'Restore Backup'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-border/40 flex justify-between items-center">
+                <div>
+                  <h4 className="text-sm font-medium text-destructive">Wipe All Local Storage</h4>
+                  <p className="text-xs text-secondary">Permanently delete all saved analysis reports from this browser.</p>
+                </div>
+                <button
+                  onClick={handleClearAllData}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Wipe Data
+                </button>
+              </div>
+            </div>
+          </Card>
         </div>
 
         {/* Sidebar Status Info */}
@@ -155,15 +330,15 @@ export default function SettingsPage() {
             <ul className="space-y-3 text-xs text-secondary leading-relaxed">
               <li className="flex gap-2">
                 <Cpu className="w-4 h-4 text-emerald-400 shrink-0" />
-                Processing is 100% on-device using local rule-based inference.
+                Processing is 100% on-device using local rule-based inference. Zero cloud calls.
               </li>
               <li className="flex gap-2">
                 <HardDrive className="w-4 h-4 text-emerald-400 shrink-0" />
-                Reports are saved to local IndexedDB. No external database is used.
+                Reports are saved to local IndexedDB. No external tracking or database.
               </li>
               <li className="flex gap-2">
                 <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
-                Raw uploaded files and auth tokens are kept strictly in memory.
+                Raw uploaded documents and auth tokens are kept strictly in ephemeral memory.
               </li>
             </ul>
           </Card>
@@ -180,6 +355,12 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <span className="text-xs text-secondary">Storage</span>
                 <span className="text-xs font-medium text-accent">IndexedDB (Active)</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-secondary">Compute Engine</span>
+                <span className="text-xs font-medium text-emerald-400 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5" /> Web Worker (Threaded)
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-secondary">OCR Engine</span>

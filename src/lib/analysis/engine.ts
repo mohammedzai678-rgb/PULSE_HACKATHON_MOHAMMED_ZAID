@@ -23,6 +23,7 @@ import {
   extractUnresolvedQuestions,
   detectConflictingInfo,
 } from './summarizer';
+import { redactSensitiveText } from './redactor';
 import { generateId, isoDay, formatDate } from '@/lib/utils';
 
 export function deriveFindingTitle(text: string, category: string, severity: Severity): string {
@@ -160,18 +161,29 @@ export async function analyzeMessages(
     }
     conversationsMap.get(convKey)!.push(msg);
 
+    // 2.5 Sensitive PII Redaction (Privacy Shield)
+    let processedText = msg.originalText;
+    if (options?.redactSensitive) {
+      const { redactedText, redactionCount } = redactSensitiveText(msg.originalText);
+      processedText = redactedText;
+      if (redactionCount > 0) {
+        msg.sensitive = 'otp';
+        msg.originalText = redactedText;
+      }
+    }
+
     // 3. Extract dates & entities
-    const extractedDates = extractDates(msg.originalText, msg.timestamp, msg.id);
-    const extractedEntities = extractEntities(msg.originalText, msg.id);
+    const extractedDates = extractDates(processedText, msg.timestamp, msg.id);
+    const extractedEntities = extractEntities(processedText, msg.id);
 
     // 4. Classify severity & category
     const { severity, confidence, reasoning, score } = classifySeverity(
-      msg.originalText,
+      processedText,
       extractedDates,
       extractedEntities,
       msg.sourceType
     );
-    const category = categorizeMessage(msg.originalText, extractedDates, extractedEntities);
+    const category = categorizeMessage(processedText, extractedDates, extractedEntities);
 
     // Ensure S4 / S3 / S2 and crisis messages are NEVER filtered out
     const isCrisisCategory =

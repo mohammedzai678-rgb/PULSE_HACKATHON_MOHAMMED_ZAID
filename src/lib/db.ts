@@ -94,3 +94,52 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   const db = await getDB();
   await db.put('settings', settings, 'app-settings');
 }
+
+/** Local storage quota and usage estimator for transparency and auditing. */
+export async function getStorageUsageEstimate(): Promise<{ usageMB: number; quotaMB: number; percentage: number }> {
+  if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      const usageMB = Math.round(((estimate.usage || 0) / (1024 * 1024)) * 100) / 100;
+      const quotaMB = Math.round(((estimate.quota || 0) / (1024 * 1024)) * 100) / 100;
+      const percentage = quotaMB > 0 ? Math.round((usageMB / quotaMB) * 1000) / 10 : 0;
+      return { usageMB, quotaMB, percentage };
+    } catch {
+      // Fallback
+    }
+  }
+  return { usageMB: 0, quotaMB: 0, percentage: 0 };
+}
+
+/** Exports complete local IndexedDB state for offline backup. */
+export async function exportDatabaseBackup(): Promise<string> {
+  const db = await getDB();
+  const reports = await db.getAll('reports');
+  const settings = await db.get('settings', 'app-settings');
+  return JSON.stringify({
+    version: DB_VERSION,
+    exportedAt: new Date().toISOString(),
+    reports,
+    settings,
+  }, null, 2);
+}
+
+/** Restores database from a verified JSON backup string. */
+export async function importDatabaseBackup(jsonString: string): Promise<{ restoredReports: number }> {
+  const data = JSON.parse(jsonString);
+  if (!data || !Array.isArray(data.reports)) {
+    throw new Error('Invalid backup file format: missing reports array.');
+  }
+  const db = await getDB();
+  let count = 0;
+  for (const report of data.reports) {
+    if (report && report.id) {
+      await db.put('reports', sanitizeForStorage(report));
+      count++;
+    }
+  }
+  if (data.settings) {
+    await db.put('settings', data.settings, 'app-settings');
+  }
+  return { restoredReports: count };
+}

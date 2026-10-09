@@ -33,8 +33,8 @@ const MEDICAL_CRISIS_PATTERNS = [
 ];
 
 const DISASTER_SAFETY_PATTERNS = [
-  /\b(?:fire\s+(?:alarm|breakout|broke\s+out)|building\s+on\s+fire|gas\s+leak|chemical\s+spill|explosion|blast\s+reported)\b/i,
-  /\b(?:evacuate\s+(?:immediately|the\s+building|now)|evacuation\s+order|lockdown\s+initiated|shelter\s+in\s+place)\b/i,
+  /\b(?:fire\s+(?:alarm|breakout|broke\s+out|hazard)|building\s+on\s+fire|gas\s+leak|chemical\s+(?:spill|leak|hazard)|toxic\s+(?:leak|spill|fumes)|explosion|blast\s+reported)\b/i,
+  /\b(?:evacuate\s+(?:immediately|the\s+building|now|all)|evacuation\s+(?:order|required|mandatory|in\s+progress|immediate|alert)|immediate\s+evacuation|lockdown\s+(?:initiated|ordered)|shelter\s+in\s+place)\b/i,
   /\b(?:active\s+threat|armed\s+intruder|hostage\s+situation|gunfire|bomb\s+threat)\b/i,
   /\b(?:severe\s+weather\s+warning|cyclone\s+alert|flash\s+flood|earthquake\s+tremors?|structural\s+collapse)\b/i,
   /\b(?:campus\s+closed\s+due\s+to\s+emergency|curfew\s+declared)\b/i,
