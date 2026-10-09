@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useImportStore, useAnalysisStore, useToastStore, useThemeStore, buildReport } from '@/lib/store';
 import { Button, Card, SeverityBadge, DropZone } from '@/components/ui';
 import {
@@ -23,6 +23,19 @@ import {
   Loader2,
   FileArchive,
   Layers,
+  Sparkles,
+  RefreshCw,
+  FolderPlus,
+  X,
+  History,
+  Eye,
+  MessageSquare,
+  Send,
+  Mail,
+  Smartphone,
+  ScrollText,
+  Files,
+  FolderOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeMessages } from '@/lib/analysis/engine';
@@ -32,159 +45,74 @@ import { formatDateTime, formatDate, generateId, cn } from '@/lib/utils';
 import { saveReport } from '@/lib/db';
 import type { AnalysisProgress, NormalizedMessage } from '@/types';
 
+interface PendingImageItem {
+  id: string;
+  file: File;
+  previewUrl: string;
+}
+
 export default function AnalysisPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const theme = useThemeStore((s) => s.theme);
   const isDark = theme === 'dark';
+  
   const {
     getAllMessages,
     batches,
     addBatch,
-    addPastedText,
     removeBatch,
     clearAll,
   } = useImportStore();
-  const { report, setReport, updateAction, reset } = useAnalysisStore();
+  
+  const {
+    report,
+    setReport,
+    updateAction,
+    reset,
+    startNewAnalysis,
+    history,
+    selectHistoryReport,
+    autoAnalyze,
+    setAutoAnalyze,
+  } = useAnalysisStore();
+  
   const { addToast } = useToastStore();
 
-  // Active input tab: 'text' | 'image' | 'file'
-  const [activeTab, setActiveTab] = useState<'text' | 'image' | 'file'>('text');
+  // Ingestion inputs: raw text + dropped images
   const [rawTextInput, setRawTextInput] = useState('');
+  const [pendingImages, setPendingImages] = useState<PendingImageItem[]>([]);
+  const [sourceType, setSourceType] = useState<string>('auto');
+
+  // OCR state
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const [ocrProgress, setOcrProgress] = useState<number>(0);
+  const [ocrCurrentFile, setOcrCurrentFile] = useState<string>('');
 
-  // Analysis state
+  // Analysis execution state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState<AnalysisProgress | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewOcrModal, setViewOcrModal] = useState<{ label: string; text: string } | null>(null);
 
   const messages = getAllMessages();
   const hasData = messages.length > 0;
+  
+  // Track how many messages were processed in the active report
+  const isReportStale = report ? messages.length > (report.totalMessagesProcessed || 0) : false;
 
-  // 1. Handle Raw Text Ingestion
-  const handleAddRawText = () => {
-    if (!rawTextInput.trim()) return;
-    try {
-      const parsed = parseWhatsAppChat(rawTextInput, 'Pasted Text');
-      const normalizedMsgs = parsed.length > 0 ? parsed : [
-        {
-          id: generateId(),
-          sourceType: 'other' as const,
-          sourceFilename: 'Pasted Notes',
-          sourceIdentifier: `pasted#${Date.now()}`,
-          sender: 'User',
-          originalText: rawTextInput.trim(),
-          timestamp: new Date(),
-          messageIndex: 1,
-        },
-      ];
-
-      addBatch({
-        sourceType: 'other',
-        label: `Pasted Note (${rawTextInput.slice(0, 20)}...)`,
-        status: 'ready',
-        messages: normalizedMsgs,
-      });
-
-      setRawTextInput('');
-      addToast({ title: 'Added', message: `Added ${normalizedMsgs.length} message(s) to analysis queue`, type: 'success' });
-    } catch {
-      addToast({ title: 'Error', message: 'Failed to process pasted text', type: 'error' });
-    }
-  };
-
-  // 2. Handle Image Drops & OCR Extraction
-  const handleImageDrop = async (files: File[]) => {
-    if (files.length === 0) return;
-    setIsOcrProcessing(true);
-    let successCount = 0;
-
-    for (const file of files) {
-      try {
-        setOcrProgress(10);
-        const ocr = await performOCR(file, (p) => setOcrProgress(Math.round(p * 100)));
-        const previewUrl = URL.createObjectURL(file);
-
-        const newMsg: NormalizedMessage = {
-          id: generateId(),
-          sourceType: 'image',
-          sourceFilename: file.name,
-          sourceIdentifier: `${file.name}#ocr`,
-          originalText: ocr.text,
-          timestamp: new Date(),
-          sender: 'OCR Extraction',
-          messageIndex: 1,
-          ocrConfidence: ocr.confidence,
-        };
-
-        addBatch({
-          sourceType: 'image',
-          label: file.name,
-          file,
-          previewUrl,
-          size: file.size,
-          status: 'ready',
-          ocrText: ocr.text,
-          ocrConfidence: ocr.confidence,
-          messages: [newMsg],
-        });
-        successCount++;
-      } catch (err: any) {
-        addToast({ title: 'OCR Failed', message: err?.message || `Failed to process image ${file.name}`, type: 'error' });
-      }
-    }
-
-    setIsOcrProcessing(false);
-    setOcrProgress(0);
-    if (successCount > 0) {
-      addToast({ title: 'Image OCR Ready', message: `Extracted text from ${successCount} image(s)`, type: 'success' });
-    }
-  };
-
-  // 3. Handle File Drops (PDFs, WhatsApp chats, JSON, SMS, etc.)
-  const handleFileDrop = async (files: File[]) => {
-    if (files.length === 0) return;
-    let count = 0;
-
-    for (const file of files) {
-      try {
-        let sourceType: any = 'document';
-        const name = file.name.toLowerCase();
-        if (name.includes('whatsapp')) sourceType = 'whatsapp';
-        else if (name.includes('telegram')) sourceType = 'telegram';
-        else if (name.includes('sms')) sourceType = 'sms';
-        else if (name.includes('circular') || name.includes('notice')) sourceType = 'circular';
-
-        const parsedMsgs = await parseFile(file, sourceType);
-        addBatch({
-          sourceType,
-          label: file.name,
-          file,
-          size: file.size,
-          status: 'ready',
-          messages: parsedMsgs,
-        });
-        count++;
-      } catch (e: any) {
-        addToast({ title: 'File Error', message: `Failed to parse ${file.name}: ${e?.message || 'Unknown'}`, type: 'error' });
-      }
-    }
-
-    if (count > 0) {
-      addToast({ title: 'Files Added', message: `Ingested ${count} file(s) into queue`, type: 'success' });
-    }
-  };
-
-  // 4. Trigger / Re-trigger Analysis (can be called repeatedly whenever new items are added!)
-  const runAnalysis = async () => {
+  // 1. Run Analysis Engine
+  const runAnalysis = useCallback(async () => {
     const currentMessages = getAllMessages();
     if (currentMessages.length === 0) {
-      addToast({ title: 'No Data', message: 'Please paste text or upload an image first', type: 'warning' });
+      addToast({ title: 'No Data', message: 'Please add raw text or upload images first.', type: 'warning' });
       return;
     }
 
     setIsAnalyzing(true);
+    setProgress({ phase: 'Initializing engine', percentage: 10, current: 0, total: currentMessages.length });
+
     try {
       const onProgress = (p: AnalysisProgress) => {
         setProgress(p);
@@ -198,125 +126,273 @@ export default function AnalysisPage() {
       });
 
       setReport(newReport);
-      addToast({ title: 'Analysis Complete', message: `Generated ${newReport.findings.length} findings from ${currentMessages.length} items`, type: 'success' });
+      addToast({
+        title: 'Analysis Complete',
+        message: `Extracted ${newReport.findings.length} findings & ${newReport.actionItems.length} actions from ${currentMessages.length} items`,
+        type: 'success',
+      });
     } catch (e: any) {
-      console.error(e);
-      addToast({ title: 'Analysis Error', message: e?.message || 'Analysis failed', type: 'error' });
+      console.error('Analysis failed:', e);
+      addToast({
+        title: 'Analysis Error',
+        message: e?.message || 'Inference engine encountered an issue. Please try again.',
+        type: 'error',
+      });
     } finally {
       setIsAnalyzing(false);
       setProgress(null);
     }
+  }, [getAllMessages, setReport, addToast]);
+
+  // 2. Auto-run analysis when navigating with ?auto=1 or when autoAnalyze is enabled and no report exists
+  useEffect(() => {
+    const shouldAuto = searchParams.get('auto') === '1';
+    if (shouldAuto && messages.length > 0 && !isAnalyzing) {
+      runAnalysis();
+    }
+  }, [searchParams, messages.length, isAnalyzing, runAnalysis]);
+
+  // 3. Handle Dropped Files (Images, PDF, Word, PPT, TXT)
+  const handleImagesSelected = (files: File[]) => {
+    // Check if any file is JSON, reject it immediately
+    const jsonFiles = files.filter(
+      (f) => f.name.toLowerCase().endsWith('.json') || f.type === 'application/json'
+    );
+    if (jsonFiles.length > 0) {
+      addToast({
+        title: 'Unsupported File Format',
+        message: 'JSON files are not supported. Please upload plain text, Word (.docx), PowerPoint (.pptx), PDF, or image files.',
+        type: 'error',
+      });
+      return;
+    }
+
+    const imageFiles = files.filter(
+      (f) => f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|bmp|gif)$/i.test(f.name)
+    );
+    const nonImageFiles = files.filter(
+      (f) => !f.type.startsWith('image/') && !/\.(jpg|jpeg|png|webp|bmp|gif)$/i.test(f.name)
+    );
+
+    if (imageFiles.length > 0) {
+      const newItems: PendingImageItem[] = imageFiles.map((file) => ({
+        id: generateId(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+
+      setPendingImages((prev) => [...prev, ...newItems]);
+      addToast({
+        title: 'Images Queued',
+        message: `${imageFiles.length} image(s) ready. If unsure of type, 'Other' will be applied.`,
+        type: 'info',
+      });
+    }
+
+    if (nonImageFiles.length > 0) {
+      handleGeneralFiles(nonImageFiles);
+    }
   };
 
-  // 5. Add Realistic Demo Data (Circular image note + WhatsApp group chat + exam reminder)
-  const handleLoadDemo = () => {
-    clearAll();
-    reset();
-
-    // 1. WhatsApp conversation batch
-    addBatch({
-      sourceType: 'whatsapp',
-      label: 'Batch 2026 WhatsApp Group',
-      status: 'ready',
-      messages: [
-        {
-          id: generateId(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Batch 2026 WhatsApp Group',
-          sourceIdentifier: 'wa-1',
-          sender: 'Prof. Kumar',
-          originalText: 'Urgent: Submit your AI Capstone project report by October 12, 2026 before 5:00 PM. Late submissions will strictly not be accepted.',
-          timestamp: new Date('2026-10-08T09:15:00'),
-          messageIndex: 1,
-        },
-        {
-          id: generateId(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Batch 2026 WhatsApp Group',
-          sourceIdentifier: 'wa-2',
-          sender: 'Priya',
-          originalText: 'Does anyone have the template for the capstone documentation?',
-          timestamp: new Date('2026-10-08T09:20:00'),
-          messageIndex: 2,
-        },
-        {
-          id: generateId(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Batch 2026 WhatsApp Group',
-          sourceIdentifier: 'wa-3',
-          sender: 'Placement Cell',
-          originalText: 'TCS campus recruitment drive on October 20, 2026. Register on the college portal before October 14. Bring 2 passport photos and updated resumes.',
-          timestamp: new Date('2026-10-08T14:30:00'),
-          messageIndex: 3,
-        },
-      ],
+  const removePendingImage = (id: string) => {
+    setPendingImages((prev) => {
+      const target = prev.find((x) => x.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((x) => x.id !== id);
     });
-
-    // 2. Circular / Image OCR note batch
-    addBatch({
-      sourceType: 'circular',
-      label: 'Exam Fee Notice & Hall Ticket (Circular #44)',
-      status: 'ready',
-      ocrText: 'CIRCULAR: Examination Fee Payment Deadline is October 15, 2026. Penalty of Rs. 500 will apply after due date. Failure to pay will result in hall tickets being withheld.',
-      ocrConfidence: 96,
-      messages: [
-        {
-          id: generateId(),
-          sourceType: 'circular',
-          sourceFilename: 'Exam Fee Notice & Hall Ticket (Circular #44)',
-          sourceIdentifier: 'circ-1',
-          sender: "Dean's Office",
-          originalText: 'CIRCULAR: Examination Fee Payment Deadline is October 15, 2026. Penalty of Rs. 500 will apply after due date. Failure to pay will result in hall tickets being withheld.',
-          timestamp: new Date('2026-10-09T08:00:00'),
-          messageIndex: 1,
-          ocrConfidence: 96,
-        },
-      ],
-    });
-
-    addToast({ title: 'Sample Data Loaded', message: 'Loaded WhatsApp chat and college circular notices. Click "Run Intelligence Analysis" to inspect.', type: 'info' });
   };
 
-  // 6. Reset Session (Allows starting fresh anytime)
-  const handleClearSession = () => {
+  // 4. Ingest Raw Text AND Images Together
+  const handleIngestAndAnalyzeTogether = async (autoRun: boolean = true) => {
+    const hasText = rawTextInput.trim().length > 0;
+    const hasImages = pendingImages.length > 0;
+
+    if (!hasText && !hasImages) {
+      addToast({ title: 'Nothing to Add', message: 'Please write text or upload an image/document to analyze.', type: 'warning' });
+      return;
+    }
+
+    setIsOcrProcessing(true);
+    let addedCount = 0;
+
+    // A. Process raw text
+    if (hasText) {
+      try {
+        let normalizedMsgs: NormalizedMessage[] = [];
+        if (sourceType === 'whatsapp' || (sourceType === 'auto' && (rawTextInput.includes('[') || rawTextInput.includes(' - ')))) {
+          normalizedMsgs = parseWhatsAppChat(rawTextInput, 'Pasted Chat Transcript');
+        } else if (sourceType === 'gmail' || (sourceType === 'auto' && (rawTextInput.includes('From:') || rawTextInput.includes('Subject:')))) {
+          normalizedMsgs = parseEmlFile(rawTextInput, 'Pasted Email').map((m) => ({ ...m, sourceType: 'gmail' }));
+        }
+        
+        if (normalizedMsgs.length === 0) {
+          normalizedMsgs = [
+            {
+              id: generateId(),
+              sourceType: (sourceType === 'auto' ? 'other' : sourceType) as any,
+              sourceFilename: sourceType === 'gmail' ? 'Pasted Email' : 'Raw Text Input',
+              sourceIdentifier: `text#${Date.now()}`,
+              sender: sourceType === 'gmail' ? 'Email Sender' : 'Direct Input',
+              originalText: rawTextInput.trim(),
+              timestamp: new Date(),
+              messageIndex: 1,
+            },
+          ];
+        }
+
+        addBatch({
+          sourceType: (sourceType === 'auto' ? 'other' : sourceType) as any,
+          label: `Note (${rawTextInput.slice(0, 24).replace(/\n/g, ' ')}...)`,
+          status: 'ready',
+          messages: normalizedMsgs,
+        });
+
+        addedCount += normalizedMsgs.length;
+      } catch (err: any) {
+        console.error('Error parsing raw text:', err);
+      }
+    }
+
+    // B. Process pending images via local OCR
+    if (hasImages) {
+      for (const item of pendingImages) {
+        try {
+          setOcrCurrentFile(item.file.name);
+          setOcrProgress(15);
+
+          const ocr = await performOCR(item.file, (p) => setOcrProgress(Math.round(p * 100)));
+
+          const targetSource = sourceType === 'other' ? 'other' : sourceType === 'auto' ? 'image' : sourceType;
+
+          const newMsg: NormalizedMessage = {
+            id: generateId(),
+            sourceType: targetSource as any,
+            sourceFilename: item.file.name,
+            sourceIdentifier: `${item.file.name}#ocr`,
+            originalText: ocr.text.trim() || '[Image contained no readable text]',
+            timestamp: new Date(),
+            sender: 'Image OCR',
+            messageIndex: 1,
+            ocrConfidence: ocr.confidence,
+          };
+
+          addBatch({
+            sourceType: targetSource as any,
+            label: item.file.name,
+            file: item.file,
+            previewUrl: item.previewUrl,
+            size: item.file.size,
+            status: 'ready',
+            ocrText: ocr.text,
+            ocrConfidence: ocr.confidence,
+            messages: [newMsg],
+          });
+
+          addedCount += 1;
+        } catch (err: any) {
+          addToast({ title: 'OCR Issue', message: `Could not extract text from ${item.file.name}`, type: 'error' });
+        }
+      }
+    }
+
+    setIsOcrProcessing(false);
+    setOcrProgress(0);
+    setOcrCurrentFile('');
+    setRawTextInput('');
+    setPendingImages([]);
+
+    addToast({ title: 'Ingested', message: `Added ${addedCount} items to workspace.`, type: 'success' });
+
+    // C. Trigger analysis if requested or if autoAnalyze is active
+    if (autoRun || autoAnalyze) {
+      setTimeout(() => {
+        runAnalysis();
+      }, 50);
+    }
+  };
+
+  // 5. General files handler (PDF, TXT, Word docx/doc, PPT pptx/ppt)
+  const handleGeneralFiles = async (files: File[]) => {
+    let count = 0;
+    for (const file of files) {
+      if (file.name.toLowerCase().endsWith('.json') || file.type === 'application/json') {
+        addToast({
+          title: 'Unsupported Format',
+          message: 'JSON files are not supported.',
+          type: 'error',
+        });
+        continue;
+      }
+      try {
+        let sType: any = sourceType === 'other' ? 'other' : 'document';
+        const parsed = await parseFile(file, sType);
+        addBatch({
+          sourceType: sType,
+          label: file.name,
+          file,
+          size: file.size,
+          status: 'ready',
+          messages: parsed,
+        });
+        count++;
+      } catch (e: any) {
+        addToast({ title: 'Import Error', message: e?.message || `Could not parse ${file.name}`, type: 'error' });
+      }
+    }
+
+    if (count > 0) {
+      addToast({ title: 'Files Ingested', message: `Added ${count} file(s).`, type: 'success' });
+      if (autoAnalyze) runAnalysis();
+    }
+  };
+
+  // 6. Start Next Fresh Analysis Session
+  const handleStartNextAnalysis = () => {
+    startNewAnalysis();
     clearAll();
-    reset();
-    addToast({ title: 'Cleared', message: 'Workspace cleared. Ready for new input.', type: 'info' });
+    setRawTextInput('');
+    setPendingImages([]);
+    addToast({
+      title: 'Next Analysis Ready',
+      message: 'Workspace reset for next analysis. Previous report saved in History.',
+      type: 'info',
+    });
   };
 
-  // 7. Save Report
+  // 7. Load Realistic Demo
+
+
+  // 8. Save Report to IndexedDB
   const handleSaveReport = async () => {
     if (!report) return;
     try {
       await saveReport(report);
-      addToast({ title: 'Report Saved', message: 'Saved report to local IndexedDB. You can view it in Saved Reports anytime.', type: 'success' });
+      addToast({ title: 'Report Saved', message: 'Report saved securely to local IndexedDB.', type: 'success' });
     } catch {
-      addToast({ title: 'Error', message: 'Failed to save report to local database', type: 'error' });
+      addToast({ title: 'Save Failed', message: 'Could not write to local database.', type: 'error' });
     }
   };
 
-  // 8. Exports
+  // 9. Exports
   const exportJson = () => {
     if (!report) return;
-    const jsonStr = exportReportToJson(report);
-    downloadFile(jsonStr, `${report.title || 'report'}.json`, 'application/json');
-    addToast({ title: 'Exported', message: 'Report exported as JSON', type: 'success' });
+    downloadFile(exportReportToJson(report), `${report.title || 'report'}.json`, 'application/json');
+    addToast({ title: 'Exported', message: 'Downloaded JSON report', type: 'success' });
   };
 
   const exportMarkdown = () => {
     if (!report) return;
-    const md = exportReportToMarkdown(report);
-    downloadFile(md, `${report.title || 'report'}.md`, 'text/markdown');
-    addToast({ title: 'Exported', message: 'Report exported as Markdown', type: 'success' });
+    downloadFile(exportReportToMarkdown(report), `${report.title || 'report'}.md`, 'text/markdown');
+    addToast({ title: 'Exported', message: 'Downloaded Markdown report', type: 'success' });
   };
 
   const exportPdf = async () => {
     if (!report) return;
     try {
       await exportReportToPdf(report);
-      addToast({ title: 'Exported', message: 'Report exported as PDF', type: 'success' });
+      addToast({ title: 'Exported', message: 'Generated PDF report', type: 'success' });
     } catch {
-      addToast({ title: 'Error', message: 'Failed to generate PDF', type: 'error' });
+      addToast({ title: 'Error', message: 'Failed to build PDF', type: 'error' });
     }
   };
 
@@ -328,6 +404,7 @@ export default function AnalysisPage() {
     });
   };
 
+  // Filter findings
   const filteredFindings = report
     ? report.findings.filter((f) => {
         if (severityFilter !== 'all') {
@@ -350,24 +427,45 @@ export default function AnalysisPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      {/* ── TOP HEADER & WORKSPACE TOOLBAR ─────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4 border-border/60">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Brain className="w-7 h-7 text-accent" /> Live Analysis Studio
+            <Brain className="w-8 h-8 text-accent" />
+            <span>Analysis</span>
           </h1>
           <p className="text-secondary text-xs sm:text-sm mt-0.5">
-            Ingest raw text, screenshots, OCR images, and chats side-by-side with local offline intelligence extraction.
+            Upload images and enter plain text for offline intelligence extraction.
           </p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={handleLoadDemo} icon={<Zap className="w-4 h-4 text-amber-500" />}>
-            Load Demo
+          {/* History Pill Selector */}
+          {history.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-black/10 dark:bg-white/5 p-1 rounded-lg text-xs">
+              <History className="w-3.5 h-3.5 text-secondary ml-1" />
+              <span className="text-[11px] text-secondary font-medium mr-1">History:</span>
+              <button
+                onClick={() => selectHistoryReport(history[0])}
+                className="px-2 py-0.5 rounded text-[11px] bg-accent/20 text-accent font-medium hover:bg-accent/30 transition-colors"
+                title="View previous analysis"
+              >
+                Prev ({history.length})
+              </button>
+            </div>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleStartNextAnalysis}
+            icon={<FolderPlus className="w-4 h-4 text-accent" />}
+            title="Preserve current report and start next analysis cleanly"
+          >
+            Start Next Analysis
           </Button>
-          <Button variant="outline" size="sm" onClick={handleClearSession} icon={<RotateCcw className="w-4 h-4" />}>
-            Clear
-          </Button>
+
+
           <Button
             size="sm"
             onClick={runAnalysis}
@@ -379,124 +477,260 @@ export default function AnalysisPage() {
         </div>
       </div>
 
-      {/* Side-by-Side Unified Workspace */}
+      {/* STALE REPORT ALERT BANNER */}
+      {isReportStale && (
+        <div className="p-3 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-between text-xs sm:text-sm">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-accent shrink-0" />
+            <span>
+              <strong>New items detected in queue!</strong> Re-analyze to include all newly uploaded images and text in your intelligence report.
+            </span>
+          </div>
+          <Button size="sm" onClick={runAnalysis} disabled={isAnalyzing}>
+            Update Analysis Now
+          </Button>
+        </div>
+      )}
+
+      {/* ── SIDE-BY-SIDE GRID WORKSPACE ────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ── LEFT COLUMN: INGESTION & DATA HUB (5 cols on lg) ──────────────── */}
+        
+        {/* ── LEFT COLUMN: INGESTION & UPLOAD WORKFLOW (5 cols) ──────────────── */}
         <div className="lg:col-span-5 space-y-4">
-          <Card className="p-4 space-y-4">
+          
+          {/* ALL-IN-ONE DUAL INGESTION CARD */}
+          <Card className="p-4 sm:p-5 space-y-4 shadow-sm">
             <div className="flex items-center justify-between border-b border-border/50 pb-3">
               <span className="font-semibold text-sm flex items-center gap-2">
                 <Plus className="w-4 h-4 text-accent" /> Ingest Data
               </span>
-
-              {/* Ingestion Tabs */}
-              <div className="flex rounded-lg p-0.5 bg-black/10 text-xs">
-                <button
-                  onClick={() => setActiveTab('text')}
+              
+              {/* Source Tag Preset Dropdown */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-secondary hidden sm:inline">Source:</span>
+                <select
+                  value={sourceType}
+                  onChange={(e) => setSourceType(e.target.value)}
                   className={cn(
-                    "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer",
-                    activeTab === 'text' ? "bg-accent text-white shadow-xs" : "text-secondary hover:text-current"
+                    "text-xs px-2 py-1 rounded border focus:outline-none focus:ring-1 focus:ring-accent",
+                    isDark ? "bg-dark-panel border-dark-border text-dark-text" : "bg-light-card border-light-border text-light-text"
                   )}
+                  title="Tag source type for intelligent parsing"
                 >
-                  Raw Text
-                </button>
-                <button
-                  onClick={() => setActiveTab('image')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer",
-                    activeTab === 'image' ? "bg-accent text-white shadow-xs" : "text-secondary hover:text-current"
-                  )}
-                >
-                  Images (OCR)
-                </button>
-                <button
-                  onClick={() => setActiveTab('file')}
-                  className={cn(
-                    "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer",
-                    activeTab === 'file' ? "bg-accent text-white shadow-xs" : "text-secondary hover:text-current"
-                  )}
-                >
-                  Files
-                </button>
+                  <option value="auto">Auto-Detect</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="gmail">Gmail</option>
+                  <option value="sms">SMS</option>
+                  <option value="circular">Circular / Notice</option>
+                  <option value="document">Document</option>
+                  <option value="image">Screenshot / Photo</option>
+                  <option value="other">Other (Unsure)</option>
+                </select>
               </div>
             </div>
 
-            {/* TAB 1: RAW TEXT INPUT */}
-            {activeTab === 'text' && (
-              <div className="space-y-3">
-                <textarea
-                  className={cn(
-                    "w-full h-36 p-3 rounded-lg border text-xs sm:text-sm resize-none focus:outline-none focus:ring-1 focus:ring-accent font-sans",
-                    isDark ? "bg-dark-panel border-dark-border text-dark-text" : "bg-light-card border-light-border text-light-text"
-                  )}
-                  placeholder="Paste WhatsApp messages, email bodies, circular text, or deadlines here..."
-                  value={rawTextInput}
-                  onChange={(e) => setRawTextInput(e.target.value)}
-                />
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] text-secondary">
-                    {rawTextInput.trim().length} characters
+            {/* QUICK SOURCE PILLS: WHATSAPP, TELEGRAM, GMAIL, SMS, CIRCULARS, ETC. */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-medium text-secondary">
+                Select Source Type:
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'auto', label: 'Auto', icon: Sparkles, color: isDark ? 'text-dark-accent' : 'text-light-accent' },
+                  { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'text-emerald-500' },
+                  { id: 'telegram', label: 'Telegram', icon: Send, color: 'text-sky-500' },
+                  { id: 'gmail', label: 'Gmail', icon: Mail, color: 'text-red-500' },
+                  { id: 'sms', label: 'SMS', icon: Smartphone, color: 'text-indigo-500' },
+                  { id: 'circular', label: 'Circulars', icon: ScrollText, color: 'text-amber-500' },
+                  { id: 'document', label: 'Documents', icon: Files, color: 'text-blue-500' },
+                  { id: 'image', label: 'Images', icon: FileImage, color: 'text-purple-500' },
+                  { id: 'other', label: 'Other', icon: FolderOpen, color: 'text-slate-400' },
+                ].map((src) => {
+                  const isSelected = sourceType === src.id;
+                  const Icon = src.icon;
+                  return (
+                    <button
+                      key={src.id}
+                      type="button"
+                      onClick={() => setSourceType(src.id)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border",
+                        isSelected
+                          ? isDark
+                            ? "bg-dark-accent text-dark-bg border-dark-accent font-semibold shadow-xs"
+                            : "bg-light-accent text-white border-light-accent font-semibold shadow-xs"
+                          : isDark
+                          ? "bg-dark-panel border-dark-border text-dark-secondary hover:text-dark-text hover:border-dark-accent/40"
+                          : "bg-light-card border-light-border text-light-text hover:text-light-accent hover:border-light-accent/50 shadow-xs"
+                      )}
+                    >
+                      <Icon className={cn("w-3.5 h-3.5 shrink-0", isSelected ? (isDark ? "text-dark-bg" : "text-white") : src.color)} />
+                      <span className={isSelected ? (isDark ? "text-dark-bg font-semibold" : "text-white font-semibold") : ""}>{src.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DROP ZONE: IMAGES, PDF, WORD, PPT, TXT */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-medium text-secondary">
+                  1. Upload Images or Documents:
+                </label>
+                <span className="text-[11px] text-secondary">
+                  Unsure of type? Select 'Other' above
+                </span>
+              </div>
+              <DropZone
+                onDrop={handleImagesSelected}
+                accept={{
+                  'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'],
+                  'application/pdf': ['.pdf'],
+                  'text/plain': ['.txt'],
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+                  'application/msword': ['.doc'],
+                  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+                  'application/vnd.ms-powerpoint': ['.ppt'],
+                }}
+                maxSizeMB={50}
+                icon={<FileImage className="w-6 h-6 text-accent" />}
+                title="Drop images, PDFs, Word (.docx), PPT (.pptx), or plain text"
+                description="Local OCR & parsing • No JSON files • Private on-device"
+              />
+            </div>
+
+            {/* PENDING IMAGES THUMBNAIL STRIP */}
+            {pendingImages.length > 0 && (
+              <div className="space-y-2 p-2.5 rounded-lg bg-black/5 dark:bg-white/5 border border-border/50">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-secondary">
+                    {pendingImages.length} image{pendingImages.length === 1 ? '' : 's'} selected:
                   </span>
-                  <Button size="sm" onClick={handleAddRawText} disabled={!rawTextInput.trim()}>
-                    Add to Analysis Queue
-                  </Button>
+                  <button
+                    onClick={() => setPendingImages([])}
+                    className="text-[11px] text-red-400 hover:underline"
+                  >
+                    Clear Images
+                  </button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {pendingImages.map((img) => (
+                    <div key={img.id} className="relative group shrink-0">
+                      <img
+                        src={img.previewUrl}
+                        alt="pending upload"
+                        className="w-16 h-16 object-cover rounded-lg border border-border shadow-xs"
+                      />
+                      <button
+                        onClick={() => removePendingImage(img.id)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-80 group-hover:opacity-100 shadow"
+                        title="Remove image"
+                        aria-label="Remove image"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      <p className="text-[9px] truncate max-w-[64px] text-secondary mt-0.5" title={img.file.name}>
+                        {img.file.name}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* TAB 2: IMAGE UPLOAD & OCR */}
-            {activeTab === 'image' && (
-              <div className="space-y-3">
-                <DropZone
-                  onDrop={handleImageDrop}
-                  accept={{
-                    'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.bmp'],
-                  }}
-                  maxSizeMB={50}
-                  icon={<FileImage size={24} />}
-                  title="Drop screenshots or notice photos"
-                  description="On-device OCR extracts text immediately"
-                />
-
-                {isOcrProcessing && (
-                  <div className="p-3 rounded-lg bg-accent/10 border border-accent/20 flex items-center gap-3 text-xs">
-                    <Loader2 className="w-4 h-4 text-accent animate-spin shrink-0" />
-                    <div className="flex-1">
-                      <p className="font-medium text-accent">Extracting text via local OCR...</p>
-                      <div className="w-full h-1.5 bg-black/20 rounded-full mt-1 overflow-hidden">
-                        <div
-                          className="h-full bg-accent transition-all duration-200"
-                          style={{ width: `${ocrProgress || 30}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
+            {/* RAW TEXT INPUT AREA */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs font-medium text-secondary">
+                  2. Enter / Paste Plain Text:
+                </label>
+                <span className="text-[11px] text-secondary">
+                  {rawTextInput.trim().length} chars
+                </span>
+              </div>
+              <textarea
+                className={cn(
+                  "w-full h-28 p-3 rounded-lg border text-xs sm:text-sm resize-none focus:outline-none focus:ring-1 focus:ring-accent font-sans",
+                  isDark ? "bg-dark-panel border-dark-border text-dark-text" : "bg-light-card border-light-border text-light-text"
                 )}
+                placeholder={
+                  sourceType === 'whatsapp'
+                    ? "Paste WhatsApp chat export or messages (e.g. [12/10/2026, 10:15] Prof: Submit report...)..."
+                    : sourceType === 'telegram'
+                    ? "Paste Telegram exported messages, announcements, or chat logs..."
+                    : sourceType === 'gmail'
+                    ? "Paste email subject lines, body text, or communication updates..."
+                    : sourceType === 'sms'
+                    ? "Paste SMS text messages or alerts..."
+                    : sourceType === 'circular'
+                    ? "Paste circular or official notice text, guidelines, or deadlines..."
+                    : "Paste plain text, chat excerpts, circular notices, emails, or personal notes here..."
+                }
+                value={rawTextInput}
+                onChange={(e) => setRawTextInput(e.target.value)}
+              />
+            </div>
+
+            {/* OCR PROGRESS BAR */}
+            {isOcrProcessing && (
+              <div className="p-3 rounded-lg bg-accent/10 border border-accent/20 flex items-center gap-3 text-xs">
+                <Loader2 className="w-4 h-4 text-accent animate-spin shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium text-accent truncate">
+                    Extracting OCR text: {ocrCurrentFile || 'Processing image...'}
+                  </p>
+                  <div className="w-full h-1.5 bg-black/20 rounded-full mt-1 overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-all duration-200"
+                      style={{ width: `${ocrProgress || 35}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* TAB 3: FILE UPLOADS */}
-            {activeTab === 'file' && (
-              <div className="space-y-3">
-                <DropZone
-                  onDrop={handleFileDrop}
-                  accept={{
-                    'application/pdf': ['.pdf'],
-                    'text/plain': ['.txt'],
-                    'application/json': ['.json'],
-                    'text/csv': ['.csv'],
-                    'application/zip': ['.zip'],
-                  }}
-                  maxSizeMB={100}
-                  title="Drop WhatsApp, Telegram, PDF or CSV files"
-                />
+            {/* COMBINED ACTION BUTTONS */}
+            <div className="space-y-2 pt-1">
+              <Button
+                className="w-full"
+                onClick={() => handleIngestAndAnalyzeTogether(true)}
+                disabled={isOcrProcessing || isAnalyzing || (!rawTextInput.trim() && pendingImages.length === 0)}
+                icon={isOcrProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              >
+                {isOcrProcessing
+                  ? 'Extracting OCR...'
+                  : isAnalyzing
+                  ? 'Analyzing Intelligence...'
+                  : 'Analyze Now'}
+              </Button>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  onClick={() => handleIngestAndAnalyzeTogether(false)}
+                  disabled={isOcrProcessing || (!rawTextInput.trim() && pendingImages.length === 0)}
+                  className="text-secondary hover:text-current underline cursor-pointer disabled:opacity-40"
+                >
+                  + Add to queue without analyzing yet
+                </button>
+
+                <label className="flex items-center gap-1.5 text-secondary cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoAnalyze}
+                    onChange={(e) => setAutoAnalyze(e.target.checked)}
+                    className="rounded border-border text-accent focus:ring-accent"
+                  />
+                  <span>Auto-analyze on upload</span>
+                </label>
               </div>
-            )}
+            </div>
           </Card>
 
-          {/* ACTIVE INGESTION QUEUE */}
-          <Card className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
+          {/* ACTIVE INGESTION QUEUE LIST */}
+          <Card className="p-4 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between border-b border-border/50 pb-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-secondary flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5" /> Ingested Items ({batches.length})
               </span>
@@ -505,7 +739,7 @@ export default function AnalysisPage() {
               </span>
             </div>
 
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {batches.map((batch) => (
                 <div
                   key={batch.id}
@@ -520,7 +754,7 @@ export default function AnalysisPage() {
                         <img
                           src={batch.previewUrl}
                           alt="preview"
-                          className="w-7 h-7 object-cover rounded shrink-0 border border-border"
+                          className="w-8 h-8 object-cover rounded shrink-0 border border-border"
                         />
                       ) : (
                         <FileImage className="w-4 h-4 text-blue-500 shrink-0" />
@@ -535,10 +769,18 @@ export default function AnalysisPage() {
                       <p className="font-medium truncate text-current" title={batch.label}>
                         {batch.label}
                       </p>
-                      <p className="text-[10px] text-secondary">
-                        {batch.messages.length} msg{batch.messages.length === 1 ? '' : 's'}
-                        {batch.ocrConfidence !== undefined && ` • OCR ${batch.ocrConfidence}%`}
-                      </p>
+                      <div className="flex items-center gap-2 text-[10px] text-secondary">
+                        <span>{batch.messages.length} msg{batch.messages.length === 1 ? '' : 's'}</span>
+                        {batch.ocrConfidence !== undefined && <span>• OCR {batch.ocrConfidence}%</span>}
+                        {batch.ocrText && (
+                          <button
+                            onClick={() => setViewOcrModal({ label: batch.label, text: batch.ocrText || '' })}
+                            className="text-accent hover:underline flex items-center gap-0.5"
+                          >
+                            <Eye className="w-2.5 h-2.5" /> OCR Text
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -554,75 +796,84 @@ export default function AnalysisPage() {
               ))}
 
               {batches.length === 0 && (
-                <div className="text-center py-6 text-secondary text-xs">
-                  No items in queue. Paste text or drop images above to start.
+                <div className="text-center py-8 text-secondary text-xs">
+                  No items in workspace. Paste text or drop images above to begin.
                 </div>
               )}
             </div>
 
             {batches.length > 0 && (
-              <Button
-                className="w-full mt-2"
-                onClick={runAnalysis}
-                disabled={isAnalyzing}
-                icon={isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
-              >
-                {isAnalyzing ? 'Extracting Intelligence...' : report ? 'Re-Analyze All Items' : 'Analyze Now'}
-              </Button>
+              <div className="pt-2 border-t border-border/50 flex gap-2">
+                <Button
+                  className="flex-1"
+                  size="sm"
+                  onClick={runAnalysis}
+                  disabled={isAnalyzing}
+                  icon={isAnalyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                >
+                  {isAnalyzing ? 'Extracting...' : report ? 'Re-Analyze Current Queue' : 'Analyze Now'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleStartNextAnalysis}
+                  icon={<FolderPlus className="w-4 h-4 text-accent" />}
+                  title="Archive report and start fresh analysis"
+                >
+                  Next
+                </Button>
+              </div>
             )}
           </Card>
         </div>
 
-        {/* ── RIGHT COLUMN: LIVE ANALYSIS RESULTS (7 cols on lg) ─────────────── */}
+        {/* ── RIGHT COLUMN: LIVE INTELLIGENCE REPORT (7 cols) ────────────────── */}
         <div className="lg:col-span-7 space-y-6">
-          {/* ANALYSIS IN PROGRESS INDICATOR */}
+          
+          {/* ANALYSIS IN PROGRESS ANIMATED CARD */}
           {isAnalyzing && (
-            <Card className="p-6 text-center space-y-4">
-              <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                <Brain className="w-12 h-12 mx-auto text-accent" />
+            <Card className="p-8 text-center space-y-4">
+              <motion.div animate={{ scale: [1, 1.08, 1] }} transition={{ repeat: Infinity, duration: 1.5 }}>
+                <Brain className="w-14 h-14 mx-auto text-accent" />
               </motion.div>
               <div>
                 <h3 className="font-bold text-lg">Extracting Local Intelligence...</h3>
                 <p className="text-xs text-secondary mt-1">
-                  {progress ? progress.phaseLabel || (progress as any).stage || 'Analyzing content' : 'Running rule-based inference'}
+                  {progress ? progress.phaseLabel || (progress as any).stage || 'Evaluating dates & actions' : 'Running rule-based inference'}
                 </p>
               </div>
               <div className="w-full max-w-md mx-auto h-2 bg-black/20 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-accent transition-all duration-300"
-                  style={{ width: `${progress ? Math.round(progress.percentage || (progress as any).percent || 0) : 15}%` }}
+                  style={{ width: `${progress ? Math.round(progress.percentage || (progress as any).percent || 0) : 25}%` }}
                 />
               </div>
-              <p className="text-[11px] text-secondary">100% On-Device • Private • No Cloud Calls</p>
+              <p className="text-[11px] text-secondary">100% On-Device • Zero Cloud Calls • Privacy Intact</p>
             </Card>
           )}
 
-          {/* NO REPORT YET EMPTY STATE */}
+          {/* EMPTY STATE: READY FOR INPUT */}
           {!isAnalyzing && !report && (
             <Card className="p-12 text-center space-y-4">
-              <div className="w-14 h-14 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto">
-                <Brain className="w-7 h-7" />
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 text-accent flex items-center justify-center mx-auto">
+                <Brain className="w-8 h-8" />
               </div>
               <div className="max-w-md mx-auto space-y-2">
-                <h3 className="font-bold text-lg">Workspace Ready</h3>
-                <p className="text-sm text-secondary">
-                  Add raw text or drop circular images on the left panel. Click <strong>Analyze Now</strong> or{' '}
-                  <strong>Load Demo</strong> to see findings, action items, and timelines side-by-side in real-time.
+                <h3 className="font-bold text-xl">Analysis Studio</h3>
+                <p className="text-sm text-secondary leading-relaxed">
+                  Paste plain text or upload images on the left panel.
+                  Intelligence findings, deadlines, action checklists, and timelines will render here in real-time.
                 </p>
-              </div>
-              <div className="pt-2">
-                <Button size="sm" variant="secondary" onClick={handleLoadDemo} icon={<Zap className="w-4 h-4 text-amber-500" />}>
-                  Load College Demo Data
-                </Button>
               </div>
             </Card>
           )}
 
-          {/* ACTIVE REPORT PANEL */}
+          {/* ACTIVE INTELLIGENCE REPORT */}
           {!isAnalyzing && report && (
             <div className="space-y-6">
+              
               {/* Report Title & Export Bar */}
-              <Card className="p-5 space-y-4">
+              <Card className="p-5 space-y-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div>
                     <h2 className="text-xl font-bold tracking-tight text-current">{report.title}</h2>
@@ -698,7 +949,7 @@ export default function AnalysisPage() {
                 </div>
               </div>
 
-              {/* Key Findings */}
+              {/* Key Findings List */}
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
                   <AlertTriangle className="text-yellow-500 w-4 h-4" /> Key Findings ({filteredFindings.length})
@@ -855,6 +1106,47 @@ export default function AnalysisPage() {
           )}
         </div>
       </div>
+
+      {/* OCR TEXT MODAL */}
+      <AnimatePresence>
+        {viewOcrModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className={cn(
+                "w-full max-w-xl p-6 rounded-2xl border shadow-xl space-y-4 max-h-[80vh] flex flex-col",
+                isDark ? "bg-dark-panel border-dark-border" : "bg-light-card border-light-border"
+              )}
+            >
+              <div className="flex items-center justify-between border-b pb-3">
+                <h3 className="font-bold text-sm flex items-center gap-2">
+                  <FileImage className="w-4 h-4 text-accent" />
+                  <span>OCR Extracted Text: {viewOcrModal.label}</span>
+                </h3>
+                <button
+                  onClick={() => setViewOcrModal(null)}
+                  className="p-1 text-secondary hover:text-current rounded"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 rounded-lg bg-black/10 text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                {viewOcrModal.text || 'No text extracted.'}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button size="sm" onClick={() => setViewOcrModal(null)}>
+                  Close
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

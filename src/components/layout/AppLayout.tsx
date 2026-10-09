@@ -18,8 +18,8 @@ export function AppLayout({ children }: AppLayoutProps) {
         <MobileNav />
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-6xl">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl 2xl:max-w-[1600px]">
             {children}
           </div>
         </main>

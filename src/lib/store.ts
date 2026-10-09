@@ -9,7 +9,6 @@ import type {
   AppSettings,
   Finding,
   ActionItem,
-  GmailMessage,
 } from '@/types';
 import { generateId } from './utils';
 import { getSettings, saveSettings } from './db';
@@ -296,6 +295,8 @@ interface AnalysisStore {
   /** Alias for report */
   currentReport: Report | null;
   savedReportId?: string;
+  history: Report[];
+  autoAnalyze: boolean;
   setRunning: () => void;
   setProgress: (p: AnalysisProgress) => void;
   setError: (e: string) => void;
@@ -305,6 +306,9 @@ interface AnalysisStore {
   markSaved: (id: string) => void;
   updateFinding: (id: string, patch: Partial<Finding>) => void;
   updateAction: (id: string, patch: Partial<ActionItem>) => void;
+  startNewAnalysis: () => void;
+  setAutoAnalyze: (autoAnalyze: boolean) => void;
+  selectHistoryReport: (report: Report) => void;
   reset: () => void;
 }
 
@@ -313,11 +317,23 @@ export const useAnalysisStore = create<AnalysisStore>((set) => ({
   progress: null,
   report: null,
   currentReport: null,
+  history: [],
+  autoAnalyze: true,
   setRunning: () => set({ status: 'running', progress: null, error: undefined, savedReportId: undefined }),
   setProgress: (progress) => set({ progress }),
   setError: (error) => set({ status: 'error', error }),
-  setReport: (report) => set({ report, currentReport: report, status: 'done', progress: null }),
-  setCurrentReport: (report) => set({ report, currentReport: report, status: 'done', progress: null }),
+  setReport: (report) =>
+    set((s) => {
+      const prev = s.report;
+      const history = prev && prev.id !== report.id ? [prev, ...s.history.filter((h) => h.id !== prev.id)] : s.history;
+      return { report, currentReport: report, status: 'done', progress: null, history };
+    }),
+  setCurrentReport: (report) =>
+    set((s) => {
+      const prev = s.report;
+      const history = prev && prev.id !== report.id ? [prev, ...s.history.filter((h) => h.id !== prev.id)] : s.history;
+      return { report, currentReport: report, status: 'done', progress: null, history };
+    }),
   markSaved: (savedReportId) => set({ savedReportId }),
   updateFinding: (id, patch) =>
     set((s) => {
@@ -331,7 +347,23 @@ export const useAnalysisStore = create<AnalysisStore>((set) => ({
       const updated = { ...s.report, actionItems: s.report.actionItems.map((a) => (a.id === id ? { ...a, ...patch } : a)) };
       return { report: updated, currentReport: updated };
     }),
-  reset: () => set({ status: 'idle', progress: null, report: null, currentReport: null, error: undefined, savedReportId: undefined }),
+  startNewAnalysis: () =>
+    set((s) => {
+      const prev = s.report;
+      const history = prev ? [prev, ...s.history.filter((h) => h.id !== prev.id)] : s.history;
+      return {
+        status: 'idle',
+        progress: null,
+        report: null,
+        currentReport: null,
+        error: undefined,
+        savedReportId: undefined,
+        history,
+      };
+    }),
+  setAutoAnalyze: (autoAnalyze) => set({ autoAnalyze }),
+  selectHistoryReport: (report) => set({ report, currentReport: report, status: 'done', progress: null }),
+  reset: () => set({ status: 'idle', progress: null, report: null, currentReport: null, error: undefined, savedReportId: undefined, history: [] }),
 }));
 
 /** Convert an AnalysisResult into a Report object (not yet persisted). */
@@ -437,121 +469,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 }));
 
-// ── Gmail (memory only — tokens are never persisted) ─────────────────────────
 
-interface GmailStore {
-  accessToken: string | null;
-  tokenExpiresAt: number | null;
-  userEmail?: string;
-  isConnected: boolean;
-  isLoading: boolean;
-  error: string | null;
-  messages: GmailMessage[];
-  selectedIds: string[];
-  lastRefresh?: Date;
-  setToken: (token: string | null, expiresInSec?: number) => void;
-  setUserEmail: (email?: string) => void;
-  setMessages: (m: GmailMessage[]) => void;
-  setLastRefresh: (d: Date) => void;
-  toggleSelected: (id: string) => void;
-  setSelected: (ids: string[]) => void;
-  connect: () => Promise<void>;
-  disconnect: () => void;
-  fetchMessages: (query?: string) => Promise<void>;
-}
-
-export const useGmailStore = create<GmailStore>((set, get) => ({
-  accessToken: null,
-  tokenExpiresAt: null,
-  isConnected: false,
-  isLoading: false,
-  error: null,
-  messages: [],
-  selectedIds: [],
-  setToken: (accessToken, expiresInSec) =>
-    set({
-      accessToken,
-      isConnected: !!accessToken,
-      tokenExpiresAt: accessToken && expiresInSec ? Date.now() + expiresInSec * 1000 : null,
-    }),
-  setUserEmail: (userEmail) => set({ userEmail }),
-  setMessages: (messages) => set({ messages }),
-  setLastRefresh: (lastRefresh) => set({ lastRefresh }),
-  toggleSelected: (id) =>
-    set((s) => ({
-      selectedIds: s.selectedIds.includes(id) ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id],
-    })),
-  setSelected: (selectedIds) => set({ selectedIds }),
-  connect: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      // In web applications, standard Google OAuth client flow:
-      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      if (!clientId) {
-        throw new Error('Google Client ID not configured.');
-      }
-      // Demo/Fallback simulated auth token if running without OAuth server redirect
-      set({
-        isConnected: true,
-        accessToken: 'demo-local-token',
-        userEmail: 'user@example.com',
-        isLoading: false,
-      });
-    } catch (e: any) {
-      set({ isLoading: false, error: e.message || 'Connection failed' });
-      throw e;
-    }
-  },
-  disconnect: () =>
-    set({
-      accessToken: null,
-      tokenExpiresAt: null,
-      isConnected: false,
-      userEmail: undefined,
-      messages: [],
-      selectedIds: [],
-      lastRefresh: undefined,
-      error: null,
-    }),
-  fetchMessages: async (query?: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      // Simulated message fetch for privacy-first inbox reading
-      const dummy: GmailMessage[] = [
-        {
-          id: 'gmail-1',
-          threadId: 'th-1',
-          subject: 'Important: Project Submission Deadline Extended',
-          from: 'head.department@college.edu',
-          to: 'me@example.com',
-          date: new Date(),
-          snippet: 'Please note the AI Capstone project deadline is extended to October 25, 2026.',
-          body: 'Dear Students,\n\nPlease note the AI Capstone project deadline is extended to October 25, 2026. Submit your final report via the portal before 6 PM.\n\nRegards,\nHOD',
-          isUnread: true,
-          attachments: [],
-        },
-        {
-          id: 'gmail-2',
-          threadId: 'th-2',
-          subject: 'Fee Payment Receipt and Hall Ticket Notification',
-          from: 'accounts@college.edu',
-          to: 'me@example.com',
-          date: new Date(Date.now() - 86400000),
-          snippet: 'Your semester exam hall ticket is available for download.',
-          body: 'Dear Student,\n\nExam hall tickets have been generated. Verify your registered subjects immediately.\n\nAccounts Office',
-          isUnread: false,
-          attachments: [],
-        },
-      ];
-      const filtered = query
-        ? dummy.filter((m) => m.subject.toLowerCase().includes(query.toLowerCase()) || m.snippet.toLowerCase().includes(query.toLowerCase()))
-        : dummy;
-      set({ messages: filtered, isLoading: false, lastRefresh: new Date() });
-    } catch (e: any) {
-      set({ isLoading: false, error: e.message || 'Failed to fetch messages' });
-    }
-  },
-}));
 
 // ── Toasts ───────────────────────────────────────────────────────────────────
 

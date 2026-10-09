@@ -144,29 +144,6 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
-
-          {/* Integrations */}
-          <Card className="p-6 space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2 border-b border-border/50 pb-3">
-              <Mail className="w-5 h-5 text-accent" /> Gmail Integration
-            </h2>
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Google OAuth Client ID (Optional)</label>
-              <p className="text-xs text-secondary">
-                To connect your Google account. Stored exclusively in local browser settings.
-              </p>
-              <input
-                type="text"
-                placeholder="xxxx.apps.googleusercontent.com"
-                value={localSettings.gmailClientId || ''}
-                onChange={(e) => setLocalSettings({ ...localSettings, gmailClientId: e.target.value })}
-                className={cn(
-                  "w-full px-3 py-2 rounded-lg text-sm font-mono border focus:outline-none focus:ring-1 focus:ring-accent",
-                  isDark ? "bg-dark-panel border-dark-border" : "bg-light-card border-light-border"
-                )}
-              />
-            </div>
-          </Card>
         </div>
 
         {/* Sidebar Status Info */}

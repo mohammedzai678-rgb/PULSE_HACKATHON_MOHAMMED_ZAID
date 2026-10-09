@@ -143,6 +143,10 @@ export interface ExtractedEntity {
 }
 
 export type FindingCategory =
+  | 'bereavement_crisis'
+  | 'medical_emergency'
+  | 'personal_crisis'
+  | 'safety'
   | 'urgent_request'
   | 'deadline'
   | 'upcoming_event'
@@ -154,7 +158,7 @@ export type FindingCategory =
   | 'financial'
   | 'exam_assignment'
   | 'internship_placement'
-  | 'safety'
+  | 'legal'
   | 'conflict'
   | 'duplicate'
   | 'potentially_missed'
@@ -162,23 +166,27 @@ export type FindingCategory =
   | 'general';
 
 export const CATEGORY_LABELS: Record<FindingCategory, string> = {
-  urgent_request: 'Urgent request',
+  bereavement_crisis: 'Bereavement / Death Alert',
+  medical_emergency: 'Medical Emergency',
+  personal_crisis: 'Personal Crisis / SOS',
+  safety: 'Safety / Disaster Alert',
+  urgent_request: 'Urgent Request',
   deadline: 'Deadline',
-  upcoming_event: 'Upcoming event',
-  meeting: 'Meeting / schedule',
+  upcoming_event: 'Upcoming Event',
+  meeting: 'Meeting / Schedule',
   decision: 'Decision',
-  question_pending: 'Question awaiting response',
-  task: 'Task / commitment',
+  question_pending: 'Question Awaiting Response',
+  task: 'Task / Commitment',
   announcement: 'Announcement',
-  financial: 'Financial / payment',
-  exam_assignment: 'Exam / assignment',
-  internship_placement: 'Internship / placement',
-  safety: 'Safety notice',
-  conflict: 'Conflicting information',
+  financial: 'Financial / Payment',
+  exam_assignment: 'Exam / Assignment',
+  internship_placement: 'Internship / Placement',
+  legal: 'Legal / Disciplinary Notice',
+  conflict: 'Conflicting Information',
   duplicate: 'Duplicate',
-  potentially_missed: 'Potentially missed',
-  sensitive: 'Sensitive (redacted)',
-  general: 'General',
+  potentially_missed: 'Potentially Missed',
+  sensitive: 'Sensitive (Redacted)',
+  general: 'General Update',
 };
 
 /** How this finding relates to the user (only when the user entered their names in Settings) */
@@ -373,37 +381,4 @@ export interface AppSettings {
   redactSensitiveContent: boolean;
   /** Names / aliases / phone numbers used to detect mentions (stored locally only) */
   userNames: string[];
-  gmailClientId?: string;
-}
-
-// ── Gmail ────────────────────────────────────────────────────────────────────
-
-export interface GmailAttachment {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-}
-
-export interface GmailMessage {
-  id: string;
-  threadId: string;
-  subject: string;
-  from: string;
-  to: string;
-  date?: Date;
-  snippet: string;
-  body: string;
-  isUnread: boolean;
-  attachments: GmailAttachment[];
-}
-
-export interface GmailSearchParams {
-  query?: string;
-  from?: string;
-  subject?: string;
-  after?: string; // yyyy-mm-dd
-  before?: string; // yyyy-mm-dd
-  unreadOnly?: boolean;
-  maxResults?: number;
 }

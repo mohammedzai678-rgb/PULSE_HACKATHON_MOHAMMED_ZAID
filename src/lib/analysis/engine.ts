@@ -26,6 +26,36 @@ import {
 import { generateId, isoDay, formatDate } from '@/lib/utils';
 
 export function deriveFindingTitle(text: string, category: string, severity: Severity): string {
+  const lower = text.toLowerCase();
+
+  if (category === 'bereavement_crisis') {
+    if (/\b(?:father|dad)\b/i.test(lower)) return 'CRITICAL: Family Bereavement Alert (Father)';
+    if (/\b(?:mother|mom)\b/i.test(lower)) return 'CRITICAL: Family Bereavement Alert (Mother)';
+    if (/\b(?:brother|sister|sibling)\b/i.test(lower)) return 'CRITICAL: Family Bereavement Alert (Sibling)';
+    if (/\b(?:grandfather|grandpa|grandmother|grandma)\b/i.test(lower)) return 'CRITICAL: Family Bereavement Alert (Grandparent)';
+    return 'CRITICAL: Bereavement & Condolence Notice';
+  }
+
+  if (category === 'medical_emergency') {
+    if (/\bblood\b/i.test(lower)) return 'URGENT: Emergency Blood / Donor Requirement';
+    if (/\b(?:icu|cardiac|accident)\b/i.test(lower)) return 'CRITICAL: Emergency Medical Situation';
+    return 'CRITICAL: Urgent Medical Alert';
+  }
+
+  if (category === 'safety') {
+    if (/\bfire\b/i.test(lower)) return 'EMERGENCY: Fire Safety / Evacuation Alert';
+    if (/\blockdown\b/i.test(lower)) return 'SECURITY ALERT: Immediate Lockdown Initiated';
+    return 'SAFETY ALERT: Emergency Hazard Warning';
+  }
+
+  if (category === 'personal_crisis') {
+    return 'SOS: Urgent Personal Distress Alert';
+  }
+
+  if (category === 'legal') {
+    return 'OFFICIAL: Legal / Disciplinary Notice';
+  }
+
   const clean = text.replace(/^(IMPORTANT|URGENT|Reminder|Notice)\s*[-:–—]\s*/i, '').trim();
   const firstSentence = clean.split(/[.?!:\n]/)[0]?.trim() || clean;
   if (firstSentence.length > 5 && firstSentence.length <= 80) {
@@ -139,13 +169,41 @@ export async function analyzeMessages(
     );
     const category = categorizeMessage(msg.originalText, extractedDates, extractedEntities);
 
-    // Filter out completely trivial chit-chat from findings unless S1 or higher
-    const isChitChat = severity === 'S0' && extractedDates.length === 0 && extractedEntities.length === 0;
+    // Ensure S4 / S3 / S2 and crisis messages are NEVER filtered out
+    const isCrisisCategory = category === 'bereavement_crisis' || category === 'medical_emergency' || category === 'safety' || category === 'personal_crisis';
+    const isChitChat = !isCrisisCategory && severity === 'S0' && extractedDates.length === 0 && extractedEntities.length === 0;
+
     if (!isChitChat || total < 10) {
       const findingId = generateId();
       const title = deriveFindingTitle(msg.originalText, category, severity);
       const deadlineDate = extractedDates.find((d) => d.kind === 'deadline' || d.kind === 'submission' || (d as any).isDeadline)?.date;
       const eventDate = extractedDates.find((d) => d.kind === 'event' || d.kind === 'meeting')?.date;
+
+      const whyItMatters =
+        category === 'bereavement_crisis'
+          ? 'Critical personal/family life event requiring immediate support, condolence, and presence.'
+          : category === 'medical_emergency'
+          ? 'Life-safety medical emergency requiring rapid intervention, hospital coordination, or blood donation.'
+          : category === 'safety'
+          ? 'Physical hazard or disaster alert directly impacting personal safety.'
+          : category === 'personal_crisis'
+          ? 'Direct SOS distress signal indicating someone is in danger or needs immediate help.'
+          : category === 'legal'
+          ? 'Formal legal or disciplinary mandate carrying institutional consequences.'
+          : reasoning[0] || 'Identified during intelligence parsing.';
+
+      const requiredAction =
+        category === 'bereavement_crisis'
+          ? 'Reach out immediately to family, offer condolences, and assist with arrangements.'
+          : category === 'medical_emergency'
+          ? 'Contact hospital/family immediately and provide emergency assistance or blood donation.'
+          : category === 'safety'
+          ? 'Follow safety or evacuation protocols immediately.'
+          : category === 'personal_crisis'
+          ? 'Contact individual or dispatch emergency services immediately.'
+          : category === 'deadline' || category === 'exam_assignment' || category === 'financial' || category === 'internship_placement'
+          ? 'Review requirement and complete necessary action before the deadline.'
+          : 'Keep noted for reference.';
 
       const finding: Finding = {
         id: findingId,
@@ -155,10 +213,8 @@ export async function analyzeMessages(
         needsReview: extractedDates.some((d) => d.needsConfirmation),
         category,
         description: msg.originalText,
-        whyItMatters: reasoning[0] || 'Identified during intelligence parsing.',
-        requiredAction: category === 'deadline' || category === 'exam_assignment' || category === 'financial'
-          ? 'Review requirement and meet deadlines on time.'
-          : 'Keep noted for reference.',
+        whyItMatters,
+        requiredAction,
         sender: msg.sender,
         messageDateTime: msg.timestamp,
         eventDateTime: eventDate,

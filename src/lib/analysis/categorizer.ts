@@ -7,67 +7,108 @@ export function categorizeMessage(
 ): FindingCategory {
   const lower = text.toLowerCase();
 
-  // 1. Safety & Emergency
-  if (/\b(fire|earthquake|emergency|safety|danger|evacuate|security breach|hazard)\b/i.test(lower)) {
-    return 'safety';
+  // 1. Bereavement & Death Alert (First Priority)
+  if (
+    /\b(?:ur|your|my|our|his|her|their)?\s*(?:father|mother|dad|mom|parent|brother|sister|son|daughter|grandpa|grandma|grandfather|grandmother|uncle|aunt|friend|colleague|cousin|relative|teacher|professor|student)\s+(?:has\s+)?(?:died|passed\s+away|breathed\s+(?:his|her|their)\s+last|expired|is\s+no\s+more|succumbed)\b/i.test(text) ||
+    /\b(?:sad\s+demise|untimely\s+demise|passed\s+away|condolence|condolences|obituary|funeral|cremation|burial|rest\s+in\s+peace|r\.?i\.?p\.?|loss\s+of\s+our\s+beloved)\b/i.test(lower)
+  ) {
+    // Avoid metaphors like "dead battery", "rip my gpa"
+    if (!/\b(?:battery|phone|laptop|game|wifi|bored|laughing|joke|gpa|sleep)\b/i.test(lower)) {
+      return 'bereavement_crisis';
+    }
   }
 
-  // 2. Internship & Placement (e.g. TCS drive, resumes)
-  if (/\b(placement|recruitment|drive|interview|internship|hiring|job offer|resume|cv|shortlist)\b/i.test(lower) ||
-      entities.some((e) => e.type === 'organization' && /(tcs|wipro|infosys|placement)/i.test(e.value))) {
+  // 2. Medical Emergency & Blood Need
+  if (
+    /\b(?:blood\s+(?:needed|required|group|donation)|units?\s+of\s+blood|o\s*[-+]ve|ab\s*[-+]ve|a\s*[-+]ve|b\s*[-+]ve)\b/i.test(lower) ||
+    /\b(?:cardiac\s+arrest|heart\s+attack|stroke|icu|ventilator|ambulance|major\s+accident|critical\s+condition|life\s+support|emergency\s+surgery)\b/i.test(lower)
+  ) {
+    if (!/\b(?:game|joke|movie)\b/i.test(lower)) {
+      return 'medical_emergency';
+    }
+  }
+
+  // 3. Personal Crisis & SOS
+  if (/\b(?:sos\b|help\s+me\s+please|please\s+help\s+me|stranded|trapped|being\s+followed|unsafe\s+here|threatened|assaulted|robbed)\b/i.test(lower)) {
+    return 'personal_crisis';
+  }
+
+  // 4. Safety & Hazard Emergency
+  if (/\b(?:fire\s+(?:alarm|breakout|broke\s+out)|building\s+on\s+fire|gas\s+leak|chemical\s+spill|explosion|evacuate|lockdown|active\s+threat|cyclone|flash\s+flood|earthquake)\b/i.test(lower)) {
+    if (!/\b(?:drill|simulation)\b/i.test(lower)) {
+      return 'safety';
+    }
+  }
+
+  // 5. Legal & Disciplinary Notices
+  if (/\b(?:legal\s+notice|court\s+summons|subpoena|show\s+cause\s+notice|disciplinary\s+committee|disciplinary\s+action|police\s+complaint|debarred|detained)\b/i.test(lower)) {
+    return 'legal';
+  }
+
+  // 6. Internship & Placement (e.g. TCS drive, resumes, OA links)
+  if (
+    /\b(?:placement|recruitment|drive|interview|internship|hiring|job\s+offer|resume|cv|shortlist|oa\s+link|online\s+assessment)\b/i.test(lower) ||
+    entities.some((e) => e.type === 'organization' && /(tcs|wipro|infosys|placement|cognizant|accenture|google|microsoft)/i.test(e.value))
+  ) {
     return 'internship_placement';
   }
 
-  // 3. Exams & Assignments
-  if (/\b(exam|examination|test|quiz|midterm|final|hall ticket|assignment|project report|homework|grade|marks)\b/i.test(lower)) {
+  // 7. Exams & Academic Submissions
+  if (/\b(?:exam|examination|test|quiz|midterm|final\s+exam|hall\s+ticket|admit\s+card|assignment|project\s+report|homework|grade|marks|viva|thesis)\b/i.test(lower)) {
     return 'exam_assignment';
   }
 
-  // 4. Financial & Payments
-  if (entities.some((e) => e.type === 'amount') ||
-      /\b(fee|fees|payment|tuition|dues|fine|penalty|refund|transaction|invoice|receipt)\b/i.test(lower)) {
+  // 8. Financial & Payments
+  if (
+    entities.some((e) => e.type === 'amount') ||
+    /\b(?:fee|fees|payment|tuition|dues|fine|penalty|refund|transaction|invoice|receipt|salary)\b/i.test(lower)
+  ) {
     return 'financial';
   }
 
-  // 5. Urgent Requests
-  if (/\b(urgent|immediate|immediately|asap|critical|strictly mandatory)\b/i.test(lower)) {
+  // 9. Urgent Requests & Action Directives
+  if (/\b(?:urgent|immediate|immediately|asap|critical|strictly\s+mandatory|vital|compulsory)\b/i.test(lower)) {
     return 'urgent_request';
   }
 
-  // 6. Meetings & Calls
-  if (/\b(meeting|zoom|teams|google meet|conference call|discussion|sync)\b/i.test(lower)) {
+  // 10. Meetings & Calls
+  if (/\b(?:meeting|zoom|teams|google\s+meet|conference\s+call|discussion|sync|standup)\b/i.test(lower)) {
     return 'meeting';
   }
 
-  // 7. Deadlines
-  if (dates.some((d) => d.kind === 'deadline' || d.kind === 'submission' || (d as any).isDeadline) ||
-      /\b(deadline|last date|due by|submit by|cut-off|before \d)\b/i.test(lower)) {
+  // 11. Deadlines
+  if (
+    dates.some((d) => d.kind === 'deadline' || d.kind === 'submission' || (d as any).isDeadline) ||
+    /\b(?:deadline|last\s+date|due\s+by|submit\s+by|cut-off|portal\s+closes|before\s+\d)\b/i.test(lower)
+  ) {
     return 'deadline';
   }
 
-  // 8. Upcoming Events
-  if (dates.some((d) => d.kind === 'event') ||
-      /\b(workshop|webinar|seminar|fest|ceremony|orientation|holiday|commencement)\b/i.test(lower)) {
+  // 12. Upcoming Events
+  if (
+    dates.some((d) => d.kind === 'event') ||
+    /\b(?:workshop|webinar|seminar|fest|ceremony|orientation|holiday|commencement|celebration)\b/i.test(lower)
+  ) {
     return 'upcoming_event';
   }
 
-  // 9. Decisions
-  if (/\b(resolved|agreed|approved|decided|final decision|unanimous|confirmed that)\b/i.test(lower)) {
+  // 13. Decisions
+  if (/\b(?:resolved|agreed|approved|decided|final\s+decision|unanimous|confirmed\s+that)\b/i.test(lower)) {
     return 'decision';
   }
 
-  // 10. Questions pending
-  if (/\?$/.test(text.trim()) || /\b(can someone|could anyone|does anyone know|please clarify|is there any)\b/i.test(lower)) {
+  // 14. Questions Pending (Unanswered query)
+  if (/\?$/.test(text.trim()) || /\b(?:can\s+someone|could\s+anyone|does\s+anyone\s+know|please\s+clarify|is\s+there\s+any)\b/i.test(lower)) {
     return 'question_pending';
   }
 
-  // 11. Tasks
-  if (/\b(please submit|please complete|action required|task|todo|assigned to)\b/i.test(lower)) {
+  // 15. Tasks
+  if (/\b(?:please\s+submit|please\s+complete|action\s+required|task|todo|assigned\s+to|action\s+item)\b/i.test(lower)) {
     return 'task';
   }
 
-  // 12. Announcements
-  if (/\b(announcement|circular|notice|all students|attention|to all members|heads up)\b/i.test(lower)) {
+  // 16. Announcements
+  if (/\b(?:announcement|circular|notice|all\s+students|attention|to\s+all\s+members|heads\s+up)\b/i.test(lower)) {
     return 'announcement';
   }
 

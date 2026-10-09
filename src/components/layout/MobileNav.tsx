@@ -6,7 +6,6 @@ import { useThemeStore } from '@/lib/store';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/upload', icon: Upload, label: 'Import' },
   { to: '/analysis', icon: BarChart3, label: 'Analysis' },
   { to: '/reports', icon: FileText, label: 'Reports' },
   { to: '/settings', icon: Settings, label: 'Settings' },

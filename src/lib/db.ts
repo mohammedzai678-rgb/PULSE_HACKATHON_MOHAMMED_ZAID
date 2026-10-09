@@ -2,8 +2,8 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { StoredReport, AppSettings, Report } from '@/types';
 
 /**
- * IndexedDB persistence. Only reports (analysis output) and settings are stored.
- * Raw uploaded files and Gmail OAuth tokens are NEVER written here.
+ * IndexedDB persistence. Only reports (analysis output) and settings are stored locally.
+ * Raw uploaded files are NEVER written here.
  */
 interface WDIMDatabase extends DBSchema {
   reports: {

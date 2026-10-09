@@ -24,28 +24,15 @@ import { useThemeStore, useSettingsStore } from '@/lib/store';
 
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/upload', icon: Upload, label: 'Import' },
   { to: '/analysis', icon: BarChart3, label: 'Analysis' },
   { to: '/reports', icon: FileText, label: 'Reports' },
   { to: '/settings', icon: Settings, label: 'Settings' },
-];
-
-const sourceNav = [
-  { to: '/upload/whatsapp', icon: MessageSquare, label: 'WhatsApp' },
-  { to: '/upload/telegram', icon: Send, label: 'Telegram' },
-  { to: '/upload/gmail', icon: Mail, label: 'Gmail' },
-  { to: '/upload/sms', icon: Smartphone, label: 'SMS' },
-  { to: '/upload/circulars', icon: ScrollText, label: 'Circulars' },
-  { to: '/upload/documents', icon: Files, label: 'Documents' },
-  { to: '/upload/images', icon: FileImage, label: 'Images' },
-  { to: '/upload/other', icon: FolderOpen, label: 'Other' },
 ];
 
 export function Sidebar() {
   const location = useLocation();
   const { theme, toggleTheme } = useThemeStore();
   const isOnline = useSettingsStore((s) => s.isOnline);
-  const showSources = location.pathname.startsWith('/upload');
 
   return (
     <aside className={cn(
@@ -97,34 +84,6 @@ export function Sidebar() {
           </NavLink>
         ))}
 
-        {/* Source shortcuts */}
-        {showSources && (
-          <>
-            <p className={cn('px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider',
-              theme === 'dark' ? 'text-dark-secondary' : 'text-light-secondary')}>
-              Import Sources
-            </p>
-            {sourceNav.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) => cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                  isActive
-                    ? theme === 'dark'
-                      ? 'bg-dark-accent/10 text-dark-accent'
-                      : 'bg-light-accent/10 text-light-accent'
-                    : theme === 'dark'
-                      ? 'text-dark-secondary hover:text-dark-text hover:bg-white/5'
-                      : 'text-light-secondary hover:text-light-text hover:bg-black/5'
-                )}
-              >
-                <item.icon size={16} />
-                {item.label}
-              </NavLink>
-            ))}
-          </>
-        )}
       </nav>
 
       {/* Bottom bar */}

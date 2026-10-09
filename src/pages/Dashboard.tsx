@@ -49,68 +49,6 @@ export default function Dashboard() {
     0
   );
 
-  const handleTryDemo = () => {
-    clearAll();
-    addBatch({
-      sourceType: 'whatsapp',
-      label: 'Demo WhatsApp Group',
-      status: 'ready',
-      messages: [
-        {
-          id: crypto.randomUUID(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Demo WhatsApp Group',
-          sourceIdentifier: 'demo-1',
-          sender: 'Prof. Kumar',
-          originalText: 'Reminder - Submit your AI project report by October 12, 2026 before 5:00 PM. Late submissions will not be accepted.',
-          timestamp: new Date('2026-10-08T09:15:00'),
-          messageIndex: 1,
-        },
-        {
-          id: crypto.randomUUID(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Demo WhatsApp Group',
-          sourceIdentifier: 'demo-2',
-          sender: 'Rahul',
-          originalText: 'Hey everyone, the department meeting has been moved to October 11 at 3 PM in Room 204. Attendance is mandatory.',
-          timestamp: new Date('2026-10-08T10:30:00'),
-          messageIndex: 2,
-        },
-        {
-          id: crypto.randomUUID(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Demo WhatsApp Group',
-          sourceIdentifier: 'demo-3',
-          sender: "Dean's Office",
-          originalText: 'IMPORTANT - All students must complete fee payment by October 15, 2026. Failure to pay will result in examination hall ticket being withheld.',
-          timestamp: new Date('2026-10-09T08:00:00'),
-          messageIndex: 3,
-        },
-        {
-          id: crypto.randomUUID(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Demo WhatsApp Group',
-          sourceIdentifier: 'demo-4',
-          sender: 'Priya',
-          originalText: "Can someone share the notes from yesterday's Data Structures lecture? I missed the class.",
-          timestamp: new Date('2026-10-09T11:45:00'),
-          messageIndex: 4,
-        },
-        {
-          id: crypto.randomUUID(),
-          sourceType: 'whatsapp',
-          sourceFilename: 'Demo WhatsApp Group',
-          sourceIdentifier: 'demo-5',
-          sender: 'Placement Cell',
-          originalText: 'TCS recruitment drive on October 20, 2026. Eligible students must register on the portal by October 14. Bring 2 passport photos and updated resume.',
-          timestamp: new Date('2026-10-07T14:00:00'),
-          messageIndex: 5,
-        },
-      ],
-    });
-    navigate('/analysis');
-  };
-
   return (
     <div className="space-y-8 pb-12">
       {/* Hero Section */}
@@ -127,15 +65,12 @@ export default function Dashboard() {
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">What did you miss?</h1>
           <p className="text-lg text-secondary mb-8">
-            Every message matters. Know what matters most. Upload your chats, emails, and notices to instantly extract
+            Every message matters. Know what matters most. Upload images, documents, and plain text to instantly extract
             deadlines, pending tasks, and critical warnings completely on-device.
           </p>
           <div className="flex flex-wrap gap-4">
-            <Button size="lg" onClick={() => navigate('/upload')} icon={<ArrowRight className="w-5 h-5" />}>
-              Analyze Now
-            </Button>
-            <Button size="lg" variant="secondary" onClick={handleTryDemo} icon={<Zap className="w-5 h-5 text-yellow-500" />}>
-              Try Demo
+            <Button size="lg" onClick={() => navigate('/analysis')} icon={<ArrowRight className="w-5 h-5" />}>
+              Open Analysis Studio
             </Button>
           </div>
         </div>
@@ -182,24 +117,25 @@ export default function Dashboard() {
       </section>
 
       {/* Quick Import Sources */}
+      {/* Quick Analysis Formats */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Quick Import</h2>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/upload')}>
-            View All Sources <ArrowRight className="w-4 h-4 ml-1" />
+          <h2 className="text-xl font-semibold">Start Analysis</h2>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/analysis')}>
+            Open Studio <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'WhatsApp', icon: MessageSquare, route: '/upload/whatsapp', color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Chats & groups' },
-            { label: 'Gmail', icon: Mail, route: '/upload/gmail', color: 'text-red-500', bg: 'bg-red-500/10', desc: 'Important emails' },
-            { label: 'Circulars', icon: ScrollText, route: '/upload/circulars', color: 'text-amber-500', bg: 'bg-amber-500/10', desc: 'Notices & bulletins' },
-            { label: 'Images / OCR', icon: FileImage, route: '/upload/images', color: 'text-blue-500', bg: 'bg-blue-500/10', desc: 'Screenshots' },
+            { label: 'Images & OCR', icon: FileImage, color: 'text-purple-500', bg: 'bg-purple-500/10', desc: 'Photos, screenshots & notices' },
+            { label: 'Documents & PDF', icon: ScrollText, color: 'text-blue-500', bg: 'bg-blue-500/10', desc: 'PDF, Word (.docx) & PPT' },
+            { label: 'Plain Text & Notes', icon: MessageSquare, color: 'text-green-500', bg: 'bg-green-500/10', desc: 'Direct paste & typed notes' },
+            { label: 'Other Formats', icon: Files, color: 'text-amber-500', bg: 'bg-amber-500/10', desc: 'Any unsure image or text' },
           ].map((src) => (
             <Card
               key={src.label}
               className="p-4 cursor-pointer hover:border-accent transition-colors flex flex-col items-center text-center group"
-              onClick={() => navigate(src.route)}
+              onClick={() => navigate('/analysis')}
             >
               <div className={cn('p-3 rounded-xl mb-3', src.bg, src.color)}>
                 <src.icon className="w-6 h-6" />
