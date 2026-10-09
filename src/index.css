@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-dark-bg: #0B0D10;
+  --color-dark-panel: #12161C;
+  --color-dark-border: #1E2430;
+  --color-dark-text: #F5F7FA;
+  --color-dark-secondary: #9CA7B5;
+  --color-dark-accent: #7CFFB2;
+
+  --color-light-bg: #F7F8FA;
+  --color-light-card: #FFFFFF;
+  --color-light-border: #E5E7EB;
+  --color-light-text: #16191F;
+  --color-light-secondary: #667085;
+  --color-light-accent: #087F5B;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Base styles */
+* {
+  @apply border-dark-border;
+}
+
+html {
+  @apply antialiased;
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply font-sans;
+}
+
+.theme-dark {
+  @apply bg-dark-bg text-dark-text;
+  color-scheme: dark;
+}
+
+.theme-light {
+  @apply bg-light-bg text-light-text;
+  color-scheme: light;
+}
+
+.theme-light * {
+  @apply border-light-border;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-dark ::-webkit-scrollbar-track {
+  background: #0B0D10;
+}
+
+.theme-dark ::-webkit-scrollbar-thumb {
+  background: #2a2f3a;
+  border-radius: 3px;
+}
+
+.theme-light ::-webkit-scrollbar-track {
+  background: #F7F8FA;
+}
+
+.theme-light ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+
+/* Focus styles */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-dark-accent;
+}
+
+.theme-light :focus-visible {
+  @apply outline-light-accent;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Drag-and-drop zone */
+.drop-zone {
+  @apply border-2 border-dashed rounded-xl p-8 text-center transition-colors;
+}
+
+.theme-dark .drop-zone {
+  @apply border-dark-border hover:border-dark-accent/50;
+}
+
+.theme-light .drop-zone {
+  @apply border-light-border hover:border-light-accent/50;
+}
+
+.drop-zone.active {
+  @apply border-dark-accent bg-dark-accent/5;
+}
+
+.theme-light .drop-zone.active {
+  @apply border-light-accent bg-light-accent/5;
+}
