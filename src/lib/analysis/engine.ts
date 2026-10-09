@@ -28,6 +28,10 @@ import { generateId, isoDay, formatDate } from '@/lib/utils';
 export function deriveFindingTitle(text: string, category: string, severity: Severity): string {
   const lower = text.toLowerCase();
 
+  if (category === 'mental_health_crisis') {
+    return 'CRITICAL: Acute Mental Health / Suicide Distress Alert';
+  }
+
   if (category === 'bereavement_crisis') {
     if (/\b(?:father|dad)\b/i.test(lower)) return 'CRITICAL: Family Bereavement Alert (Father)';
     if (/\b(?:mother|mom)\b/i.test(lower)) return 'CRITICAL: Family Bereavement Alert (Mother)';
@@ -170,7 +174,12 @@ export async function analyzeMessages(
     const category = categorizeMessage(msg.originalText, extractedDates, extractedEntities);
 
     // Ensure S4 / S3 / S2 and crisis messages are NEVER filtered out
-    const isCrisisCategory = category === 'bereavement_crisis' || category === 'medical_emergency' || category === 'safety' || category === 'personal_crisis';
+    const isCrisisCategory =
+      category === 'mental_health_crisis' ||
+      category === 'bereavement_crisis' ||
+      category === 'medical_emergency' ||
+      category === 'safety' ||
+      category === 'personal_crisis';
     const isChitChat = !isCrisisCategory && severity === 'S0' && extractedDates.length === 0 && extractedEntities.length === 0;
 
     if (!isChitChat || total < 10) {
@@ -180,7 +189,9 @@ export async function analyzeMessages(
       const eventDate = extractedDates.find((d) => d.kind === 'event' || d.kind === 'meeting')?.date;
 
       const whyItMatters =
-        category === 'bereavement_crisis'
+        category === 'mental_health_crisis'
+          ? 'Immediate life-safety crisis: Acute suicidal ideation or self-harm distress detected. Compassionate human intervention and crisis support resources required immediately.'
+          : category === 'bereavement_crisis'
           ? 'Critical personal/family life event requiring immediate support, condolence, and presence.'
           : category === 'medical_emergency'
           ? 'Life-safety medical emergency requiring rapid intervention, hospital coordination, or blood donation.'
@@ -193,7 +204,9 @@ export async function analyzeMessages(
           : reasoning[0] || 'Identified during intelligence parsing.';
 
       const requiredAction =
-        category === 'bereavement_crisis'
+        category === 'mental_health_crisis'
+          ? 'Check on the individual immediately with compassionate presence. Connect with 24/7 Suicide Prevention Lifeline (India: 14416 / 1800-891-4416 | Global: 988 | Text HOME to 741741).'
+          : category === 'bereavement_crisis'
           ? 'Reach out immediately to family, offer condolences, and assist with arrangements.'
           : category === 'medical_emergency'
           ? 'Contact hospital/family immediately and provide emergency assistance or blood donation.'

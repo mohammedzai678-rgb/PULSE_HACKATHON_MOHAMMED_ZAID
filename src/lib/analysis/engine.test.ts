@@ -22,6 +22,24 @@ describe('Urgency & Crisis Classification Engine', () => {
     expect(action.taskDescription).toContain('Contact family');
   });
 
+  it('correctly classifies "i want to suicide" as S4 Critical mental health crisis with helpline action', async () => {
+    const text = 'i want to suicide';
+    const result = await analyzeMessages([text]);
+
+    expect(result.findings.length).toBeGreaterThan(0);
+    const finding = result.findings[0];
+    expect(finding.severity).toBe('S4');
+    expect(finding.category).toBe('mental_health_crisis');
+    expect(finding.title).toContain('Suicide Distress');
+    expect(finding.whyItMatters).toContain('Acute suicidal ideation');
+
+    // Ensure immediate crisis helpline intervention action is created
+    expect(result.actionItems.length).toBeGreaterThan(0);
+    const action = result.actionItems[0];
+    expect(action.severity).toBe('S4');
+    expect(action.taskDescription).toContain('Suicide Prevention Lifeline');
+  });
+
   it('correctly classifies medical emergency blood requests as S4 Critical', async () => {
     const text = 'URGENT: O+ blood needed immediately at City Care ICU for surgery!';
     const result = await analyzeMessages([text]);

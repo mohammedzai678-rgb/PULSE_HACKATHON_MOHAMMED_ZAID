@@ -7,7 +7,22 @@ export function categorizeMessage(
 ): FindingCategory {
   const lower = text.toLowerCase();
 
-  // 1. Bereavement & Death Alert (First Priority)
+  // 1. Acute Mental Health, Suicidal Ideation & Self-Harm (Absolute Highest Priority)
+  if (
+    /\b(?:i\s+want\s+to\s+suicide|want\s+to\s+commit\s+suicide|going\s+to\s+commit\s+suicide|committing\s+suicide|commit\s+suicide)\b/i.test(lower) ||
+    /\b(?:i\s+want\s+to\s+die|want\s+to\s+kill\s+myself|going\s+to\s+kill\s+myself|gonna\s+kill\s+myself|kill\s+myself|thinking\s+of\s+killing\s+myself)\b/i.test(lower) ||
+    /\b(?:end\s+my\s+life|ending\s+my\s+life|end\s+it\s+all|better\s+off\s+dead|wish\s+i\s+was\s+dead|wish\s+i\s+were\s+never\s+born)\b/i.test(lower) ||
+    /\b(?:hang\s+myself|cut\s+(?:my\s+)?wrists?|take\s+(?:all\s+)?my\s+pills|overdose\s+on\s+pills|jump\s+off\s+a\s+(?:bridge|roof|building))\b/i.test(lower) ||
+    /\b(?:i\s+dont\s+want\s+to\s+live|don't\s+want\s+to\s+live|cannot\s+live\s+anymore|can't\s+live\s+anymore|no\s+reason\s+to\s+live|tired\s+of\s+living|ready\s+to\s+die)\b/i.test(lower) ||
+    /\b(?:this\s+is\s+my\s+(?:last|final)\s+(?:message|goodbye|note)|goodbye\s+(?:everyone|cruel\s+world|forever)|forgive\s+me\s+for\s+everything\s+goodbye|won't\s+be\s+here\s+tomorrow|wont\s+be\s+alive\s+tomorrow)\b/i.test(lower) ||
+    /\b(?:self\s*harm|cutting\s+myself|hurting\s+myself)\b/i.test(lower)
+  ) {
+    if (!/\b(?:squad|pass|door|bunt|drill)\b/i.test(lower)) {
+      return 'mental_health_crisis';
+    }
+  }
+
+  // 2. Bereavement & Death Alert (Life-Critical Priority)
   if (
     /\b(?:ur|your|my|our|his|her|their)?\s*(?:father|mother|dad|mom|parent|brother|sister|son|daughter|grandpa|grandma|grandfather|grandmother|uncle|aunt|friend|colleague|cousin|relative|teacher|professor|student)\s+(?:has\s+)?(?:died|passed\s+away|breathed\s+(?:his|her|their)\s+last|expired|is\s+no\s+more|succumbed)\b/i.test(text) ||
     /\b(?:sad\s+demise|untimely\s+demise|passed\s+away|condolence|condolences|obituary|funeral|cremation|burial|rest\s+in\s+peace|r\.?i\.?p\.?|loss\s+of\s+our\s+beloved)\b/i.test(lower)

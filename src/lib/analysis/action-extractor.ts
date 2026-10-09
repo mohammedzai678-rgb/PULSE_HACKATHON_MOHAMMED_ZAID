@@ -68,7 +68,10 @@ export function extractActions(
     let explanation = 'Life-critical or emergency notification flagged by analysis engine.';
 
     const lower = text.toLowerCase();
-    if (/\b(?:father|mother|dad|mom|died|passed\s+away|demise|death|funeral|cremation|condolence)\b/i.test(lower)) {
+    if (/\b(?:suicide|kill\s+myself|want\s+to\s+die|end\s+my\s+life|cut\s+(?:my\s+)?wrists|hang\s+myself|overdose|dont\s+want\s+to\s+live|don't\s+want\s+to\s+live|goodbye\s+everyone|self\s*harm)\b/i.test(lower)) {
+      taskDescription = 'CRITICAL INTERVENTION: Reach out immediately & contact 24/7 Suicide Prevention Lifeline (India: 14416 / 1800-891-4416 | Global: 988 | Text HOME to 741741).';
+      explanation = 'Acute mental health crisis or suicidal distress signal detected.';
+    } else if (/\b(?:father|mother|dad|mom|died|passed\s+away|demise|death|funeral|cremation|condolence)\b/i.test(lower)) {
       taskDescription = 'Urgent: Contact family, offer condolences, and assist with immediate arrangements.';
       explanation = 'Bereavement notification regarding family or close contact detected.';
     } else if (/\b(?:blood|icu|hospital|ambulance|cardiac|accident|oxygen)\b/i.test(lower)) {

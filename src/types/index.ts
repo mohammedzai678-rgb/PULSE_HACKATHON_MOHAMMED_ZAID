@@ -143,6 +143,7 @@ export interface ExtractedEntity {
 }
 
 export type FindingCategory =
+  | 'mental_health_crisis'
   | 'bereavement_crisis'
   | 'medical_emergency'
   | 'personal_crisis'
@@ -166,6 +167,7 @@ export type FindingCategory =
   | 'general';
 
 export const CATEGORY_LABELS: Record<FindingCategory, string> = {
+  mental_health_crisis: 'Mental Health / Suicide Distress Alert',
   bereavement_crisis: 'Bereavement / Death Alert',
   medical_emergency: 'Medical Emergency',
   personal_crisis: 'Personal Crisis / SOS',

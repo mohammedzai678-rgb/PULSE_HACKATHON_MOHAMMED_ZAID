@@ -36,6 +36,7 @@ import {
   ScrollText,
   Files,
   FolderOpen,
+  HeartHandshake,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeMessages } from '@/lib/analysis/engine';
@@ -43,6 +44,7 @@ import { parseFile, performOCR, parseWhatsAppChat } from '@/lib/parsers';
 import { exportReportToPdf, exportReportToMarkdown, exportReportToJson, downloadFile } from '@/lib/export';
 import { formatDateTime, formatDate, generateId, cn } from '@/lib/utils';
 import { saveReport } from '@/lib/db';
+import { CATEGORY_LABELS } from '@/types';
 import type { AnalysisProgress, NormalizedMessage } from '@/types';
 
 interface PendingImageItem {
@@ -951,6 +953,25 @@ export default function AnalysisPage() {
 
               {/* Key Findings List */}
               <div className="space-y-3">
+                {/* Crisis Intervention Helpline Banner */}
+                {report.findings.some((f) => f.category === 'mental_health_crisis') && (
+                  <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3.5 text-xs text-red-300">
+                    <HeartHandshake className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-red-200 text-sm">Acute Distress & Mental Health Support</p>
+                      <p className="leading-relaxed text-red-300/90">
+                        A life-critical mental health or self-harm distress signal was identified in this conversation. If you or someone you know is struggling, confidential 24/7 help is available:
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1 font-medium text-[11px]">
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">India: Tele-MANAS (14416 / 1800-891-4416)</span>
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">India: Kiran (1800-599-0019)</span>
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">US/Global: 988 Lifeline</span>
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">Text HOME to 741741</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <h3 className="text-sm font-semibold flex items-center gap-2">
                   <AlertTriangle className="text-yellow-500 w-4 h-4" /> Key Findings ({filteredFindings.length})
                 </h3>
@@ -961,6 +982,28 @@ export default function AnalysisPage() {
                       <div className="space-y-1 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <SeverityBadge severity={finding.severity} needsReview={finding.needsReview} size="sm" />
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 rounded text-[10px] font-medium border",
+                              finding.category === 'mental_health_crisis'
+                                ? "bg-red-500/15 border-red-500/40 text-red-400"
+                                : finding.category === 'bereavement_crisis'
+                                ? "bg-purple-500/15 border-purple-500/40 text-purple-400"
+                                : finding.category === 'medical_emergency'
+                                ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
+                                : finding.category === 'safety'
+                                ? "bg-orange-500/15 border-orange-500/40 text-orange-400"
+                                : finding.category === 'deadline'
+                                ? "bg-amber-500/15 border-amber-500/40 text-amber-400"
+                                : finding.category === 'internship_placement'
+                                ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                                : finding.category === 'exam_assignment'
+                                ? "bg-blue-500/15 border-blue-500/40 text-blue-400"
+                                : "bg-black/10 dark:bg-white/10 border-border/50 text-secondary"
+                            )}
+                          >
+                            {CATEGORY_LABELS[finding.category] || finding.category}
+                          </span>
                           <h4 className="font-semibold text-sm text-current">{finding.title}</h4>
                         </div>
                         <p className="text-xs text-secondary leading-relaxed">{finding.description}</p>

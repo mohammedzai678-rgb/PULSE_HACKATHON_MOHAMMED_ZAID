@@ -46,8 +46,20 @@ const PERSONAL_CRISIS_PATTERNS = [
   /\b(?:call\s+the\s+police|dial\s+(?:911|112|100)\s+immediately)\b/i,
 ];
 
+// Tier 0.5: Acute Mental Health, Suicidal Ideation & Self-Harm (Immediate S4 Critical)
+// Based on C-SSRS (Columbia Suicide Severity Rating Scale) & CLPsych Research
+const SUICIDE_MENTAL_HEALTH_PATTERNS = [
+  /\b(?:i\s+want\s+to\s+suicide|want\s+to\s+commit\s+suicide|going\s+to\s+commit\s+suicide|committing\s+suicide|commit\s+suicide)\b/i,
+  /\b(?:i\s+want\s+to\s+die|want\s+to\s+kill\s+myself|going\s+to\s+kill\s+myself|gonna\s+kill\s+myself|kill\s+myself|thinking\s+of\s+killing\s+myself)\b/i,
+  /\b(?:end\s+my\s+life|ending\s+my\s+life|end\s+it\s+all|better\s+off\s+dead|wish\s+i\s+was\s+dead|wish\s+i\s+were\s+never\s+born)\b/i,
+  /\b(?:hang\s+myself|cut\s+(?:my\s+)?wrists?|take\s+(?:all\s+)?my\s+pills|overdose\s+on\s+pills|jump\s+off\s+a\s+(?:bridge|roof|building))\b/i,
+  /\b(?:i\s+dont\s+want\s+to\s+live|don't\s+want\s+to\s+live|cannot\s+live\s+anymore|can't\s+live\s+anymore|no\s+reason\s+to\s+live|tired\s+of\s+living|ready\s+to\s+die)\b/i,
+  /\b(?:this\s+is\s+my\s+(?:last|final)\s+(?:message|goodbye|note)|goodbye\s+(?:everyone|cruel\s+world|forever)|forgive\s+me\s+for\s+everything\s+goodbye|won't\s+be\s+here\s+tomorrow|wont\s+be\s+alive\s+tomorrow)\b/i,
+  /\b(?:self\s*harm|cutting\s+myself|hurting\s+myself)\b/i,
+];
+
 // Metaphorical guards to prevent colloquial / figurative false alarms
-const METAPHOR_FALSE_POSITIVES = /\b(?:dead\s+battery|phone\s+(?:died|is\s+dead)|laptop\s+died|killing\s+it|drop\s+dead\s+gorgeous|dying\s+of\s+laughter|sick\s+beat|fire\s+song|heart\s+attack\s+when\s+i\s+saw|murdered\s+the\s+exam|rip\s+my\s+gpa|rip\s+sleep|mock\s+drill|fire\s+drill|simulation\s+only)\b/i;
+const METAPHOR_FALSE_POSITIVES = /\b(?:dead\s+battery|phone\s+(?:died|is\s+dead)|laptop\s+died|killing\s+it|drop\s+dead\s+gorgeous|dying\s+of\s+laughter|sick\s+beat|fire\s+song|heart\s+attack\s+when\s+i\s+saw|murdered\s+the\s+exam|rip\s+my\s+gpa|rip\s+sleep|mock\s+drill|fire\s+drill|simulation\s+only|suicide\s+(?:squad|pass|door|run|mission|bunt|drill))\b/i;
 
 // Tier 1: Severe Consequence & Debarment Patterns
 const CONSEQUENCE_PATTERNS = [
@@ -86,12 +98,17 @@ export function classifySeverity(
 
   const isMetaphor = METAPHOR_FALSE_POSITIVES.test(lowerText);
 
-  // 1. CHECK TIER 0: LIFE-SAFETY, BEREAVEMENT & PERSONAL CRISIS (Guaranteed S4)
+  // 1. CHECK TIER 0: LIFE-SAFETY, BEREAVEMENT, MENTAL HEALTH & PERSONAL CRISIS (Guaranteed S4)
+  const isMentalHealthCrisis = !isMetaphor && SUICIDE_MENTAL_HEALTH_PATTERNS.some((p) => p.test(text));
   const isBereavement = !isMetaphor && BEREAVEMENT_PATTERNS.some((p) => p.test(text));
   const isMedicalEmergency = !isMetaphor && MEDICAL_CRISIS_PATTERNS.some((p) => p.test(text));
   const isDisaster = !isMetaphor && DISASTER_SAFETY_PATTERNS.some((p) => p.test(text));
   const isPersonalCrisis = !isMetaphor && PERSONAL_CRISIS_PATTERNS.some((p) => p.test(text));
 
+  if (isMentalHealthCrisis) {
+    score += 100;
+    reasoning.push('[Life-Safety Distress Alert] Acute suicidal ideation, self-harm crisis, or finality farewell signal detected. Immediate human intervention and helpline support required.');
+  }
   if (isBereavement) {
     score += 100;
     reasoning.push('[Life-Safety Alert] Direct bereavement / death notification detected regarding a family member or close contact.');
@@ -191,8 +208,8 @@ export function classifySeverity(
   let severity: Severity = 'S0';
   let confidence: Confidence = 'medium';
 
-  // Rule 1: Crisis, bereavement, medical emergency is ALWAYS Critical S4
-  if (isBereavement || isMedicalEmergency || isDisaster || isPersonalCrisis) {
+  // Rule 1: Crisis, bereavement, mental health/suicide distress, medical emergency is ALWAYS Critical S4
+  if (isMentalHealthCrisis || isBereavement || isMedicalEmergency || isDisaster || isPersonalCrisis) {
     severity = 'S4';
     confidence = 'high';
   }

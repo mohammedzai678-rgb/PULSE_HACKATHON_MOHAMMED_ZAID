@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getReport, renameReport, deleteReport, saveReport } from '@/lib/db';
 import type { Report, StoredReport, ActionItemStatus } from '@/types';
+import { CATEGORY_LABELS } from '@/types';
 import { useToastStore, useThemeStore } from '@/lib/store';
 import { Button, Card, SeverityBadge, ConfirmDialog } from '@/components/ui';
 import {
@@ -15,6 +16,7 @@ import {
   CheckCircle,
   Clock,
   Calendar,
+  HeartHandshake,
 } from 'lucide-react';
 import { formatDateTime, formatDate, cn } from '@/lib/utils';
 import { exportReportToPdf, exportReportToMarkdown, exportReportToJson, downloadFile } from '@/lib/export';
@@ -234,6 +236,24 @@ export default function ReportDetail() {
 
       {/* Detailed Findings */}
       <section className="space-y-4">
+        {report.findings.some((f) => f.category === 'mental_health_crisis') && (
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3.5 text-xs text-red-300">
+            <HeartHandshake className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-red-200 text-sm">Acute Distress & Mental Health Support</p>
+              <p className="leading-relaxed text-red-300/90">
+                A life-critical mental health or self-harm distress signal was identified in this conversation. If you or someone you know is struggling, confidential 24/7 help is available:
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1 font-medium text-[11px]">
+                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">India: Tele-MANAS (14416 / 1800-891-4416)</span>
+                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">India: Kiran (1800-599-0019)</span>
+                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">US/Global: 988 Lifeline</span>
+                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-200">Text HOME to 741741</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <h2 className="text-xl font-bold flex items-center gap-2">
           <AlertTriangle className="text-yellow-500 w-5 h-5" /> Detailed Findings ({report.findings.length})
         </h2>
@@ -242,6 +262,30 @@ export default function ReportDetail() {
             <Card key={finding.id} className="p-5 space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <SeverityBadge severity={finding.severity} needsReview={finding.needsReview} />
+                {finding.category && (
+                  <span
+                    className={cn(
+                      "px-2.5 py-0.5 rounded text-xs font-medium border",
+                      finding.category === 'mental_health_crisis'
+                        ? "bg-red-500/15 border-red-500/40 text-red-400"
+                        : finding.category === 'bereavement_crisis'
+                        ? "bg-purple-500/15 border-purple-500/40 text-purple-400"
+                        : finding.category === 'medical_emergency'
+                        ? "bg-rose-500/15 border-rose-500/40 text-rose-400"
+                        : finding.category === 'safety'
+                        ? "bg-orange-500/15 border-orange-500/40 text-orange-400"
+                        : finding.category === 'deadline'
+                        ? "bg-amber-500/15 border-amber-500/40 text-amber-400"
+                        : finding.category === 'internship_placement'
+                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                        : finding.category === 'exam_assignment'
+                        ? "bg-blue-500/15 border-blue-500/40 text-blue-400"
+                        : "bg-black/10 dark:bg-white/10 border-border/50 text-secondary"
+                    )}
+                  >
+                    {CATEGORY_LABELS[finding.category] || finding.category}
+                  </span>
+                )}
                 <h3 className="font-semibold text-lg text-current">{finding.title}</h3>
               </div>
               <p className="text-secondary text-sm leading-relaxed">{finding.description}</p>
